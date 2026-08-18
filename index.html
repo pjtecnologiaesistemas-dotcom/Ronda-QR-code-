@@ -137,6 +137,13 @@
     background:transparent;border:none;color:var(--sub);cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;
   }
   .chip button:hover{color:var(--red);}
+  .chip-toggle{cursor:pointer;user-select:none;transition:transform .1s ease, opacity .15s ease;}
+  .chip-toggle:active{transform:scale(0.96);}
+  .chip-on{
+    border-color:var(--amber-dim);background:linear-gradient(180deg,#3a2f10 0%,#2a2210 100%);color:var(--amber);
+  }
+  .chip-off{opacity:0.45;}
+  .chip-off:hover{opacity:0.75;}
   .ronda-config{
     display:flex;gap:14px;flex-wrap:wrap;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--sub);
     margin-top:4px;
@@ -503,17 +510,17 @@
           <div class="row2" style="margin-bottom:10px;">
             <div>
               <label style="font-weight:400;font-size:12px;">Início</label>
-              <input type="text" id="postoIntervaloInicio" placeholder="HH:MM" value="06:00" oninput="gerarHorariosAutomaticos(true)">
+              <input type="text" id="postoIntervaloInicio" placeholder="HH:MM" value="06:00" oninput="gerarHorariosAutomaticos(true, true)">
             </div>
             <div>
               <label style="font-weight:400;font-size:12px;">Fim</label>
-              <input type="text" id="postoIntervaloFim" placeholder="HH:MM" value="18:00" oninput="gerarHorariosAutomaticos(true)">
+              <input type="text" id="postoIntervaloFim" placeholder="HH:MM" value="18:00" oninput="gerarHorariosAutomaticos(true, true)">
             </div>
           </div>
           <div class="row2" style="margin-bottom:10px;">
             <div>
               <label style="font-weight:400;font-size:12px;">A cada (minutos)</label>
-              <input type="number" id="postoIntervaloMinutos" placeholder="Ex: 60" value="60" oninput="gerarHorariosAutomaticos(true)">
+              <input type="number" id="postoIntervaloMinutos" placeholder="Ex: 60" value="60" oninput="gerarHorariosAutomaticos(true, true)">
             </div>
           </div>
         </div>
@@ -762,7 +769,8 @@ function renderPostoSelects(){
 
 /* ---------- Postos: login (usuário/senha) + configuração da ronda ---------- */
 let editingPostoId = null;
-let postoHorariosTemp = [];
+let postoHorariosTemp = [];      // horários selecionados (usados para o alerta e salvos no posto)
+let postoHorariosGerados = [];   // todos os horários gerados pelo intervalo (universo de opções, modo intervalo)
 
 function tipoRondaSelecionado(){
   const el = document.querySelector('input[name="postoTipoRonda"]:checked');
@@ -773,7 +781,7 @@ function alternarTipoRonda(){
   const intervalo = tipoRondaSelecionado() === 'intervalo';
   document.getElementById('blocoHorarioManual').style.display = intervalo ? 'none' : 'block';
   document.getElementById('blocoHorarioIntervalo').style.display = intervalo ? 'block' : 'none';
-  if(intervalo) gerarHorariosAutomaticos(true);
+  if(intervalo) gerarHorariosAutomaticos(true, true);
   else renderHorariosChips();
 }
 
@@ -781,16 +789,31 @@ function renderHorariosChips(){
   const el = document.getElementById('postoHorariosChips');
   const preview = document.getElementById('postoHorariosPreview');
   const manual = tipoRondaSelecionado() === 'manual';
-  el.innerHTML = postoHorariosTemp.map((h, i) =>
-    `<span class="chip">${h}${manual ? `<button type="button" onclick="removerHorarioPosto(${i})">✕</button>` : ''}</span>`
-  ).join('');
-  if(!postoHorariosTemp.length){
-    preview.textContent = 'Nenhum horário definido ainda.';
-  } else if(manual){
-    preview.textContent = postoHorariosTemp.length + ' horário(s) fixo(s) definido(s).';
-  } else {
-    preview.textContent = 'Ronda a cada ' + document.getElementById('postoIntervaloMinutos').value + ' min, gerando ' + postoHorariosTemp.length + ' horário(s).';
+
+  if(manual){
+    el.innerHTML = postoHorariosTemp.map((h, i) =>
+      `<span class="chip">${h}<button type="button" onclick="removerHorarioPosto(${i})">✕</button></span>`
+    ).join('');
+    preview.textContent = postoHorariosTemp.length ? (postoHorariosTemp.length + ' horário(s) fixo(s) definido(s).') : 'Nenhum horário definido ainda.';
+    return;
   }
+
+  // Modo intervalo: mostra todos os horários gerados; toque para ligar/desligar o alerta em cada um.
+  el.innerHTML = postoHorariosGerados.map(h => {
+    const ligado = postoHorariosTemp.includes(h);
+    return `<span class="chip chip-toggle ${ligado ? 'chip-on' : 'chip-off'}" onclick="alternarHorarioGerado('${h}')">${ligado ? '🔔' : '🔕'} ${h}</span>`;
+  }).join('');
+  preview.textContent = postoHorariosGerados.length
+    ? ('Toque nos horários para ligar/desligar o alerta — ' + postoHorariosTemp.length + ' de ' + postoHorariosGerados.length + ' selecionado(s) para avisar o vigilante.')
+    : 'Nenhum horário definido ainda.';
+}
+
+function alternarHorarioGerado(h){
+  const i = postoHorariosTemp.indexOf(h);
+  if(i === -1) postoHorariosTemp.push(h);
+  else postoHorariosTemp.splice(i, 1);
+  postoHorariosTemp.sort();
+  renderHorariosChips();
 }
 
 function adicionarHorarioPosto(){
@@ -806,7 +829,7 @@ function removerHorarioPosto(i){
   postoHorariosTemp.splice(i, 1);
   renderHorariosChips();
 }
-function gerarHorariosAutomaticos(silencioso){
+function gerarHorariosAutomaticos(silencioso, preservarSelecao){
   const iniStr = document.getElementById('postoIntervaloInicio').value.trim();
   const fimStr = document.getElementById('postoIntervaloFim').value.trim();
   const passo = parseInt(document.getElementById('postoIntervaloMinutos').value, 10);
@@ -831,7 +854,14 @@ function gerarHorariosAutomaticos(silencioso){
     gerados.push(hh + ':' + mm);
     cursor += passo;
   }
-  postoHorariosTemp = gerados;
+  postoHorariosGerados = gerados;
+  if(preservarSelecao){
+    // Mantém ligados os horários que já estavam selecionados e ainda existem na nova lista.
+    postoHorariosTemp = postoHorariosTemp.filter(h => gerados.includes(h));
+    if(!postoHorariosTemp.length) postoHorariosTemp = gerados.slice(); // primeira geração: tudo ligado por padrão
+  } else {
+    postoHorariosTemp = gerados.slice();
+  }
   renderHorariosChips();
   if(!silencioso) showBanner('✔ ' + gerados.length + ' horário(s) gerado(s) de ' + iniStr + ' até ' + fimStr + '.', 'ok');
 }
@@ -847,6 +877,7 @@ function limparFormularioPosto(){
   document.getElementById('postoIntervaloMinutos').value = '60';
   document.querySelector('input[name="postoTipoRonda"][value="manual"]').checked = true;
   postoHorariosTemp = [];
+  postoHorariosGerados = [];
   alternarTipoRonda();
 }
 
@@ -856,10 +887,10 @@ function salvarPosto(){
   const senha = document.getElementById('postoSenha').value.trim();
   const duracaoMin = parseInt(document.getElementById('postoDuracao').value) || null;
   const tipoRonda = tipoRondaSelecionado();
-  if(tipoRonda === 'intervalo') gerarHorariosAutomaticos(true);
   const horarios = postoHorariosTemp.slice();
   if(!nome){ alert('Informe o nome do posto.'); return; }
   if(!usuario || !senha){ alert('Informe o usuário e a senha de acesso do posto.'); return; }
+  if(!horarios.length){ alert('Selecione ou defina ao menos um horário de ronda para o alerta.'); return; }
   const duplicado = Object.keys(postosCache).some(id => id !== editingPostoId && postosCache[id].usuario === usuario);
   if(duplicado){ alert('Já existe um posto com esse usuário. Escolha outro.'); return; }
 
@@ -898,14 +929,19 @@ function editarPosto(id){
 
   const tipoRonda = p.tipoRonda === 'intervalo' ? 'intervalo' : 'manual';
   document.querySelector('input[name="postoTipoRonda"][value="' + tipoRonda + '"]').checked = true;
+  document.getElementById('blocoHorarioManual').style.display = tipoRonda === 'intervalo' ? 'none' : 'block';
+  document.getElementById('blocoHorarioIntervalo').style.display = tipoRonda === 'intervalo' ? 'block' : 'none';
+
   if(tipoRonda === 'intervalo'){
     document.getElementById('postoIntervaloInicio').value = p.rondaInicio || '06:00';
     document.getElementById('postoIntervaloFim').value = p.rondaFim || '18:00';
     document.getElementById('postoIntervaloMinutos').value = p.rondaIntervaloMin || 60;
+    // Reconstrói o universo de horários do intervalo e mantém marcados
+    // (🔔 ligado) apenas os que já estavam salvos como alerta.
+    gerarHorariosAutomaticos(true, true);
+  } else {
+    renderHorariosChips();
   }
-  document.getElementById('blocoHorarioManual').style.display = tipoRonda === 'intervalo' ? 'none' : 'block';
-  document.getElementById('blocoHorarioIntervalo').style.display = tipoRonda === 'intervalo' ? 'block' : 'none';
-  renderHorariosChips();
 
   document.getElementById('postoFormTitle').textContent = 'Editar posto: ' + p.nome;
   document.getElementById('postoSalvarBtn').textContent = 'Salvar alterações';

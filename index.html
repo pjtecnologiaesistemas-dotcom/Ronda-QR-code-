@@ -63,19 +63,17 @@
   .status-banner.ok{display:block;background:rgba(62,207,142,0.1);color:var(--green);}
   main{max-width:920px;margin:0 auto;padding:18px 16px 60px;}
 
-  /* ---- role gate ---- */
-  .gate{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:78vh;text-align:center;gap:22px;}
+  /* ---- login do vigilante ---- */
+  .gate{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:78vh;text-align:center;gap:18px;}
   .gate h2{font-size:26px;margin:0;font-weight:700;}
   .gate p{color:var(--sub);margin:0;max-width:340px;font-size:14px;}
-  .gate-options{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;}
-  .gate-card{
-    width:170px;padding:26px 18px;border-radius:14px;border:1px solid var(--line);
-    background:var(--panel);cursor:pointer;transition:transform .15s ease, border-color .15s ease;
+  .admin-link{
+    position:absolute;top:0;right:0;font-size:11.5px;color:var(--sub);
+    font-family:'IBM Plex Mono',monospace;text-decoration:underline;cursor:pointer;
   }
-  .gate-card:hover{transform:translateY(-3px);border-color:var(--amber-dim);}
-  .gate-card .ic{font-size:30px;margin-bottom:10px;}
-  .gate-card b{display:block;font-size:16px;}
-  .gate-card small{color:var(--sub);font-size:12px;}
+  .admin-link:hover{color:var(--amber);}
+  .gate-login{width:100%;max-width:300px;text-align:left;}
+  .gate-login label{margin-top:2px;}
 
   /* ---- tabs ---- */
   .tabs{display:flex;gap:6px;margin-bottom:18px;overflow-x:auto;padding-bottom:2px;}
@@ -247,21 +245,18 @@
 
 <main>
 
-  <!-- ROLE GATE -->
+  <!-- LOGIN DO VIGILANTE -->
   <div class="gate" id="gate">
-    <h2>Selecione o modo</h2>
-    <p>Administradores cadastram pontos de ronda e acompanham relatórios. Vigilantes escaneiam os QR Codes fixados nos postos.</p>
-    <div class="gate-options">
-      <div class="gate-card" onclick="askAdminPin()">
-        <div class="ic">🛠️</div>
-        <b>Administrador</b>
-        <small>Pontos, QR, relatórios</small>
-      </div>
-      <div class="gate-card" onclick="enterVigilante()">
-        <div class="ic">🔦</div>
-        <b>Vigilante</b>
-        <small>Escanear ronda</small>
-      </div>
+    <a class="admin-link" onclick="askAdminPin()">Administrador</a>
+    <h2>Acesso do vigilante</h2>
+    <p>Entre com o usuário e senha cadastrados pelo administrador.</p>
+    <div class="gate-login">
+      <label>Usuário</label>
+      <input type="text" id="loginUsuario" placeholder="usuário" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('loginSenha').focus();">
+      <label>Senha</label>
+      <input type="password" id="loginSenha" placeholder="senha" autocomplete="current-password" onkeydown="if(event.key==='Enter')loginVigilante();">
+      <div class="modal-error" id="loginError">Usuário ou senha incorretos.</div>
+      <button class="btn btn-amber btn-full" onclick="loginVigilante()">Entrar</button>
     </div>
   </div>
 
@@ -277,7 +272,7 @@
     <!-- PONTOS -->
     <div class="tab-panel" id="panel-pontos">
       <div class="card">
-        <h3>Novo ponto de ronda</h3>
+        <h3 id="cpFormTitle">Novo ponto de ronda</h3>
         <div class="desc">Capture a localização estando fisicamente no local, ou informe manualmente.</div>
         <label>Nome do ponto (ex: Portaria Principal, Galpão 2)</label>
         <input type="text" id="cpNome" placeholder="Nome do ponto">
@@ -302,7 +297,8 @@
           </div>
         </div>
         <button class="btn btn-ghost" style="margin-bottom:10px;" onclick="usarLocalizacaoAtual()">📍 Usar minha localização atual</button>
-        <button class="btn btn-amber btn-full" onclick="salvarCheckpoint()">Salvar ponto e gerar QR</button>
+        <button class="btn btn-amber btn-full" id="cpSalvarBtn" onclick="salvarCheckpoint()">Salvar ponto e gerar QR</button>
+        <button class="btn btn-ghost btn-full" id="cpCancelarBtn" style="display:none;margin-top:8px;" onclick="cancelarEdicaoCheckpoint()">Cancelar edição</button>
       </div>
 
       <div class="card">
@@ -324,8 +320,8 @@
       </div>
 
       <div class="card">
-        <h3>Vigilantes</h3>
-        <div class="desc">Cadastre os vigilantes de cada posto. Ao iniciar uma ronda, o vigilante seleciona o posto e escolhe o próprio nome nesta lista — assim fica registrado com precisão quem iniciou cada ronda.</div>
+        <h3 id="vigFormTitle">Vigilantes</h3>
+        <div class="desc">Cadastre os vigilantes de cada posto, com usuário e senha de acesso. É esse login que o vigilante usa na tela inicial para iniciar a ronda.</div>
         <label>Nome completo</label>
         <input type="text" id="vigNomeAdmin" placeholder="Nome do vigilante">
         <div class="row2">
@@ -338,7 +334,18 @@
             <select id="vigPostoSelect"><option value="">Selecione um posto</option></select>
           </div>
         </div>
-        <button class="btn btn-amber btn-full" onclick="salvarVigilante()">Adicionar vigilante</button>
+        <div class="row2">
+          <div>
+            <label>Usuário</label>
+            <input type="text" id="vigUsuarioAdmin" placeholder="usuário de acesso" autocomplete="off">
+          </div>
+          <div>
+            <label>Senha</label>
+            <input type="text" id="vigSenhaAdmin" placeholder="senha de acesso" autocomplete="off">
+          </div>
+        </div>
+        <button class="btn btn-amber btn-full" id="vigSalvarBtn" onclick="salvarVigilante()">Adicionar vigilante</button>
+        <button class="btn btn-ghost btn-full" id="vigCancelarBtn" style="display:none;margin-top:8px;" onclick="cancelarEdicaoVigilante()">Cancelar edição</button>
         <div id="vigilanteList" style="margin-top:14px;"><div class="empty">Nenhum vigilante cadastrado ainda.</div></div>
       </div>
     </div>
@@ -381,20 +388,10 @@
 
   <!-- VIGILANTE AREA -->
   <div id="vigArea" style="display:none;">
-    <div class="card" id="vigLoginCard">
-      <h3>Identifique-se</h3>
-      <label>Posto</label>
-      <select id="vigPostoLogin" onchange="atualizarVigilantesDoPosto()"><option value="">Selecione o posto</option></select>
-      <label>Vigilante</label>
-      <select id="vigNomeSelect"><option value="">Selecione seu nome</option></select>
-      <button class="btn btn-amber btn-full" onclick="confirmarVigilante()">Iniciar ronda</button>
-      <div class="desc" style="margin-top:10px;margin-bottom:0;">Seu nome não está na lista? Peça ao administrador para cadastrar você na aba Equipe.</div>
-    </div>
-
     <div id="vigScanCard" style="display:none;">
       <div class="cp-item">
         <div class="info"><b id="vigAtualNome"></b><small id="vigAtualPosto"></small></div>
-        <div class="cp-actions"><button class="icon-btn" onclick="trocarVigilante()">🔁 Trocar vigilante</button></div>
+        <div class="cp-actions"><button class="icon-btn" onclick="trocarVigilante()">🔁 Sair / trocar vigilante</button></div>
       </div>
       <div class="card">
         <h3>Escanear ponto</h3>
@@ -470,7 +467,17 @@ let currentPostoNome = '';
 let html5QrCode = null;
 let scannerBusy = false;
 
-/* ---------- Postos e Vigilantes (cadastro do admin, usado também no login do vigilante) ---------- */
+// Pré-preenche o usuário salvo neste aparelho (conveniência apenas — a senha
+// nunca é salva localmente).
+const savedUsuario = localStorage.getItem('ronda_vig_usuario');
+if(savedUsuario){
+  document.addEventListener('DOMContentLoaded', () => {
+    const el = document.getElementById('loginUsuario');
+    if(el) el.value = savedUsuario;
+  });
+}
+
+/* ---------- Postos e Vigilantes (cadastro do admin; vigilantesCache também é usado para autenticar o login) ---------- */
 postosRef.orderBy('nome').onSnapshot(snap => {
   postosCache = {};
   snap.forEach(doc => postosCache[doc.id] = doc.data());
@@ -482,7 +489,6 @@ vigilantesRef.orderBy('nome').onSnapshot(snap => {
   vigilantesCache = {};
   snap.forEach(doc => vigilantesCache[doc.id] = doc.data());
   renderVigilanteList();
-  atualizarVigilantesDoPosto();
 }, err => showBanner('⚠ Erro ao carregar vigilantes: ' + err.message, 'error'));
 
 function renderPostoList(){
@@ -511,8 +517,8 @@ function renderVigilanteList(){
     const v = vigilantesCache[id];
     const div = document.createElement('div');
     div.className = 'cp-item';
-    div.innerHTML = `<div class="info"><b>${v.nome}</b><small>${v.postoNome || 'sem posto'}${v.matricula ? ' · matrícula ' + v.matricula : ''}</small></div>
-      <div class="cp-actions"><button class="icon-btn" onclick="excluirVigilante('${id}')">Excluir</button></div>`;
+    div.innerHTML = `<div class="info"><b>${v.nome}</b><small>${v.postoNome || 'sem posto'}${v.matricula ? ' · matrícula ' + v.matricula : ''}${v.usuario ? ' · usuário ' + v.usuario : ''}</small></div>
+      <div class="cp-actions"><button class="icon-btn" onclick="editarVigilante('${id}')">Editar</button><button class="icon-btn" onclick="excluirVigilante('${id}')">Excluir</button></div>`;
     el.appendChild(div);
   });
 }
@@ -526,33 +532,6 @@ function renderPostoSelects(){
 
   const vpSel = document.getElementById('vigPostoSelect');
   if(vpSel){ const cur = vpSel.value; vpSel.innerHTML = '<option value="">Selecione um posto</option>' + opts; vpSel.value = cur; }
-
-  const loginSel = document.getElementById('vigPostoLogin');
-  if(loginSel){
-    const cur = loginSel.value;
-    loginSel.innerHTML = '<option value="">Selecione o posto</option>' + opts;
-    loginSel.value = cur;
-    atualizarVigilantesDoPosto();
-  }
-}
-
-function atualizarVigilantesDoPosto(){
-  const sel = document.getElementById('vigNomeSelect');
-  const loginSel = document.getElementById('vigPostoLogin');
-  if(!sel || !loginSel) return;
-  const postoId = loginSel.value;
-  const cur = sel.value;
-  if(!postoId){
-    sel.innerHTML = '<option value="">Selecione o posto primeiro</option>';
-    return;
-  }
-  const filtrados = Object.keys(vigilantesCache).filter(id => vigilantesCache[id].postoId === postoId);
-  if(!filtrados.length){
-    sel.innerHTML = '<option value="">Nenhum vigilante cadastrado neste posto</option>';
-    return;
-  }
-  sel.innerHTML = '<option value="">Selecione seu nome</option>' + filtrados.map(id => `<option value="${id}">${vigilantesCache[id].nome}</option>`).join('');
-  sel.value = cur;
 }
 
 function salvarPosto(){
@@ -568,23 +547,74 @@ function excluirPosto(id){
   }
 }
 
+let editingVigilanteId = null;
+
+function limparFormularioVigilante(){
+  document.getElementById('vigNomeAdmin').value = '';
+  document.getElementById('vigMatricula').value = '';
+  document.getElementById('vigPostoSelect').value = '';
+  document.getElementById('vigUsuarioAdmin').value = '';
+  document.getElementById('vigSenhaAdmin').value = '';
+}
+
 function salvarVigilante(){
   const nome = document.getElementById('vigNomeAdmin').value.trim();
   const matricula = document.getElementById('vigMatricula').value.trim();
   const postoId = document.getElementById('vigPostoSelect').value;
+  const usuario = document.getElementById('vigUsuarioAdmin').value.trim().toLowerCase();
+  const senha = document.getElementById('vigSenhaAdmin').value.trim();
   if(!nome || !postoId){ alert('Informe o nome e selecione o posto.'); return; }
+  if(!usuario || !senha){ alert('Informe o usuário e a senha de acesso do vigilante.'); return; }
   const postoNome = postosCache[postoId] ? postosCache[postoId].nome : '';
-  vigilantesRef.add({nome, matricula, postoId, postoNome, criadoEm: firebase.firestore.FieldValue.serverTimestamp()})
+  const duplicado = Object.keys(vigilantesCache).some(id => id !== editingVigilanteId && vigilantesCache[id].usuario === usuario);
+  if(duplicado){ alert('Já existe um vigilante com esse usuário. Escolha outro.'); return; }
+
+  if(editingVigilanteId){
+    const id = editingVigilanteId;
+    vigilantesRef.doc(id).update({nome, matricula, postoId, postoNome, usuario, senha})
+      .then(() => {
+        showBanner('✔ Vigilante "' + nome + '" atualizado.', 'ok');
+        cancelarEdicaoVigilante();
+      })
+      .catch(e => showBanner('⚠ Erro ao atualizar vigilante: ' + e.message, 'error'));
+    return;
+  }
+
+  vigilantesRef.add({nome, matricula, postoId, postoNome, usuario, senha, criadoEm: firebase.firestore.FieldValue.serverTimestamp()})
     .then(() => {
-      document.getElementById('vigNomeAdmin').value = '';
-      document.getElementById('vigMatricula').value = '';
+      limparFormularioVigilante();
       showBanner('✔ Vigilante "' + nome + '" cadastrado.', 'ok');
     })
     .catch(e => showBanner('⚠ Erro ao salvar vigilante: ' + e.message, 'error'));
 }
+
+function editarVigilante(id){
+  const v = vigilantesCache[id];
+  if(!v) return;
+  editingVigilanteId = id;
+  document.getElementById('vigNomeAdmin').value = v.nome;
+  document.getElementById('vigMatricula').value = v.matricula || '';
+  document.getElementById('vigPostoSelect').value = v.postoId || '';
+  document.getElementById('vigUsuarioAdmin').value = v.usuario || '';
+  document.getElementById('vigSenhaAdmin').value = v.senha || '';
+  document.getElementById('vigFormTitle').textContent = 'Editar vigilante: ' + v.nome;
+  document.getElementById('vigSalvarBtn').textContent = 'Salvar alterações';
+  document.getElementById('vigCancelarBtn').style.display = 'block';
+  document.getElementById('vigFormTitle').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function cancelarEdicaoVigilante(){
+  editingVigilanteId = null;
+  limparFormularioVigilante();
+  document.getElementById('vigFormTitle').textContent = 'Vigilantes';
+  document.getElementById('vigSalvarBtn').textContent = 'Adicionar vigilante';
+  document.getElementById('vigCancelarBtn').style.display = 'none';
+}
+
 function excluirVigilante(id){
-  if(confirm('Remover este vigilante da lista?')){
+  if(confirm('Remover este vigilante da lista? Ele perderá o acesso de login.')){
     vigilantesRef.doc(id).delete();
+    if(editingVigilanteId === id) cancelarEdicaoVigilante();
   }
 }
 
@@ -635,35 +665,44 @@ function confirmarPin(){
     document.getElementById('pinInput').focus();
   }
 }
-function enterVigilante(){
+function loginVigilante(){
+  const usuario = document.getElementById('loginUsuario').value.trim().toLowerCase();
+  const senha = document.getElementById('loginSenha').value.trim();
+  const errEl = document.getElementById('loginError');
+  errEl.style.display = 'none';
+  if(!usuario || !senha){
+    errEl.textContent = 'Informe usuário e senha.';
+    errEl.style.display = 'block';
+    return;
+  }
+  const vigId = Object.keys(vigilantesCache).find(id =>
+    vigilantesCache[id].usuario === usuario && vigilantesCache[id].senha === senha);
+  if(!vigId){
+    errEl.textContent = 'Usuário ou senha incorretos.';
+    errEl.style.display = 'block';
+    document.getElementById('loginSenha').value = '';
+    return;
+  }
+  const v = vigilantesCache[vigId];
+  currentVigilante = v.nome;
+  currentVigilanteId = vigId;
+  currentPostoId = v.postoId;
+  currentPostoNome = v.postoNome || '';
+  localStorage.setItem('ronda_vig_usuario', usuario);
+
   document.getElementById('gate').style.display = 'none';
   document.getElementById('vigArea').style.display = 'block';
+  document.getElementById('vigScanCard').style.display = 'block';
   const b = document.getElementById('roleBadge');
   b.style.display = 'inline-block';
   b.textContent = 'VIGILANTE · sair';
+  document.getElementById('vigAtualNome').textContent = currentVigilante;
+  document.getElementById('vigAtualPosto').textContent = currentPostoNome;
+  document.getElementById('lastScanBox').innerHTML = '';
   loadCheckpointsForScanning();
-
-  // Pré-seleciona o último posto/vigilante usados neste aparelho apenas como
-  // ponto de partida — a lista de vigilantes continua disponível e a ronda
-  // só começa quando "Iniciar ronda" for confirmado, permitindo trocar o
-  // nome sempre que outro vigilante for usar o mesmo aparelho.
-  const savedPostoId = localStorage.getItem('ronda_posto_id');
-  const savedVigId = localStorage.getItem('ronda_vig_id');
-  if(savedPostoId){
-    const tentarPreencher = (tentativas) => {
-      if(postosCache[savedPostoId]){
-        document.getElementById('vigPostoLogin').value = savedPostoId;
-        atualizarVigilantesDoPosto();
-        if(savedVigId && vigilantesCache[savedVigId]){
-          document.getElementById('vigNomeSelect').value = savedVigId;
-        }
-      } else if(tentativas > 0){
-        setTimeout(() => tentarPreencher(tentativas - 1), 400);
-      }
-    };
-    tentarPreencher(5);
-  }
+  carregarHistoricoVigilante();
 }
+
 function logoutRole(){
   location.reload();
 }
@@ -697,6 +736,7 @@ function initAdmin(){
             <small>${cp.lat.toFixed(5)}, ${cp.lng.toFixed(5)} · raio ${cp.raio}m ${cp.posto ? '· ' + cp.posto : ''}</small>
           </div>
           <div class="cp-actions">
+            <button class="icon-btn" onclick="editarCheckpoint('${doc.id}')">✏️ Editar</button>
             <button class="icon-btn" onclick="excluirCheckpoint('${doc.id}')">Excluir</button>
           </div>`;
         list.appendChild(div);
@@ -721,6 +761,8 @@ function usarLocalizacaoAtual(){
   }, err => alert('Não foi possível obter localização: ' + err.message), {enableHighAccuracy:true});
 }
 
+let editingCheckpointId = null;
+
 function salvarCheckpoint(){
   const nome = document.getElementById('cpNome').value.trim();
   const lat = parseFloat(document.getElementById('cpLat').value);
@@ -732,6 +774,28 @@ function salvarCheckpoint(){
     alert('Preencha nome, latitude e longitude (ou use "Usar minha localização atual").');
     return;
   }
+
+  const limparFormulario = () => {
+    document.getElementById('cpNome').value = '';
+    document.getElementById('cpLat').value = '';
+    document.getElementById('cpLng').value = '';
+    document.getElementById('cpPosto').value = '';
+    document.getElementById('cpRaio').value = 30;
+  };
+
+  if(editingCheckpointId){
+    // Atualiza o ponto existente (mesmo ID) para que o QR Code já impresso
+    // continue funcionando — só os dados dele mudam.
+    const id = editingCheckpointId;
+    checkpointsRef.doc(id).update({nome, lat, lng, raio, postoId, posto})
+      .then(() => {
+        showBanner('✔ Ponto "' + nome + '" atualizado. O QR Code já impresso continua válido.', 'ok');
+        cancelarEdicaoCheckpoint();
+      })
+      .catch(e => showBanner('⚠ Erro ao atualizar o ponto: ' + e.message, 'error'));
+    return;
+  }
+
   checkpointsRef.add({nome, lat, lng, raio, postoId, posto, criadoEm: firebase.firestore.FieldValue.serverTimestamp()})
     .then(docRef => {
       // Confirma no servidor (não só localmente) que o ponto realmente foi gravado.
@@ -740,10 +804,7 @@ function salvarCheckpoint(){
     .then(snap => {
       if(snap.exists){
         showBanner('✔ Ponto "' + nome + '" salvo no banco de dados.', 'ok');
-        document.getElementById('cpNome').value = '';
-        document.getElementById('cpLat').value = '';
-        document.getElementById('cpLng').value = '';
-        document.getElementById('cpPosto').value = '';
+        limparFormulario();
       } else {
         showBanner('⚠ O ponto não foi confirmado no servidor. Verifique as regras do Firestore.', 'error');
       }
@@ -751,9 +812,37 @@ function salvarCheckpoint(){
     .catch(e => showBanner('⚠ Erro ao salvar no Firestore: ' + e.message, 'error'));
 }
 
+function editarCheckpoint(id){
+  const cp = checkpointsCache[id];
+  if(!cp) return;
+  editingCheckpointId = id;
+  document.getElementById('cpNome').value = cp.nome;
+  document.getElementById('cpLat').value = cp.lat;
+  document.getElementById('cpLng').value = cp.lng;
+  document.getElementById('cpRaio').value = cp.raio;
+  document.getElementById('cpPosto').value = cp.postoId || '';
+  document.getElementById('cpFormTitle').textContent = 'Editar ponto: ' + cp.nome;
+  document.getElementById('cpSalvarBtn').textContent = 'Salvar alterações';
+  document.getElementById('cpCancelarBtn').style.display = 'block';
+  document.getElementById('panel-pontos').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function cancelarEdicaoCheckpoint(){
+  editingCheckpointId = null;
+  document.getElementById('cpNome').value = '';
+  document.getElementById('cpLat').value = '';
+  document.getElementById('cpLng').value = '';
+  document.getElementById('cpPosto').value = '';
+  document.getElementById('cpRaio').value = 30;
+  document.getElementById('cpFormTitle').textContent = 'Novo ponto de ronda';
+  document.getElementById('cpSalvarBtn').textContent = 'Salvar ponto e gerar QR';
+  document.getElementById('cpCancelarBtn').style.display = 'none';
+}
+
 function excluirCheckpoint(id){
   if(confirm('Excluir este ponto de ronda? O QR Code impresso deixará de funcionar.')){
     checkpointsRef.doc(id).delete();
+    if(editingCheckpointId === id) cancelarEdicaoCheckpoint();
   }
 }
 
@@ -863,29 +952,9 @@ function loadCheckpointsForScanning(){
   });
 }
 
-function confirmarVigilante(){
-  const postoId = document.getElementById('vigPostoLogin').value;
-  const vigId = document.getElementById('vigNomeSelect').value;
-  if(!postoId || !vigId){ alert('Selecione o posto e o seu nome na lista.'); return; }
-  const v = vigilantesCache[vigId];
-  if(!v){ alert('Vigilante não encontrado. Tente novamente em alguns segundos.'); return; }
-  currentVigilante = v.nome;
-  currentVigilanteId = vigId;
-  currentPostoId = postoId;
-  currentPostoNome = postosCache[postoId] ? postosCache[postoId].nome : '';
-  localStorage.setItem('ronda_vig_id', vigId);
-  localStorage.setItem('ronda_posto_id', postoId);
-  document.getElementById('vigAtualNome').textContent = currentVigilante;
-  document.getElementById('vigAtualPosto').textContent = currentPostoNome;
-  document.getElementById('vigLoginCard').style.display = 'none';
-  document.getElementById('vigScanCard').style.display = 'block';
-  carregarHistoricoVigilante();
-}
-
 function trocarVigilante(){
   pararScanner();
-  document.getElementById('vigScanCard').style.display = 'none';
-  document.getElementById('vigLoginCard').style.display = 'block';
+  location.reload();
 }
 
 function iniciarScanner(){
@@ -1015,7 +1084,8 @@ function mostrarUltimoScan(nome, dist, status){
           ${ok ? 'Dentro da área · ' : 'FORA da área tolerada · '}${dist.toFixed(0)}m do ponto
         </span>
       </div>
-    </div>`;
+    </div>
+    <button class="btn btn-ghost btn-full" style="margin-top:10px;" onclick="trocarVigilante()">↩️ Voltar / Trocar vigilante</button>`;
 }
 
 function carregarHistoricoVigilante(){

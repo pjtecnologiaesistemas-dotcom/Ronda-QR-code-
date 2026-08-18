@@ -910,20 +910,41 @@ function onScanSuccess(decodedText){
     scannerBusy = false;
     return;
   }
-  const cp = vigCheckpointsCache[payload.cpId];
-  if(!cp){
-    alert('Ponto de ronda não encontrado no sistema.');
-    scannerBusy = false;
+  pararScanner();
+  const cpCache = vigCheckpointsCache[payload.cpId];
+  if(cpCache){
+    processarPontoEscaneado(payload.cpId, cpCache);
     return;
   }
-  pararScanner();
+  // Não achou no cache local — pode ser que a lista de pontos ainda não tenha
+  // terminado de sincronizar (ex: conexão lenta logo após abrir o app) ou o
+  // ponto tenha sido cadastrado há pouco. Antes de desistir, confere direto
+  // no Firestore para não gerar um falso "não encontrado".
+  checkpointsRef.doc(payload.cpId).get().then(doc => {
+    if(doc.exists){
+      const cp = doc.data();
+      vigCheckpointsCache[payload.cpId] = cp;
+      processarPontoEscaneado(payload.cpId, cp);
+    } else {
+      alert('Ponto de ronda não encontrado no sistema. Confirme com o administrador se este QR Code ainda está cadastrado (ele pode ter sido excluído ou recadastrado, o que gera uma etiqueta nova).');
+      scannerBusy = false;
+      document.getElementById('scanIdle').style.display = 'block';
+    }
+  }).catch(err => {
+    alert('Erro ao verificar o ponto de ronda: ' + err.message);
+    scannerBusy = false;
+    document.getElementById('scanIdle').style.display = 'block';
+  });
+}
+
+function processarPontoEscaneado(cpId, cp){
   document.querySelector('.radar').classList.add('pinging');
   navigator.geolocation.getCurrentPosition(pos => {
     document.querySelector('.radar').classList.remove('pinging');
     const dist = haversine(pos.coords.latitude, pos.coords.longitude, cp.lat, cp.lng);
     const status = dist <= cp.raio ? 'valido' : 'fora_area';
     scansRef.add({
-      checkpointId: payload.cpId,
+      checkpointId: cpId,
       checkpointNome: cp.nome,
       vigilante: currentVigilante,
       vigilanteId: currentVigilanteId,

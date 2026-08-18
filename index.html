@@ -484,6 +484,25 @@
           <button class="btn btn-ghost" style="margin-bottom:10px;" onclick="adicionarHorarioPosto()">+ Adicionar horário</button>
         </div>
         <div id="postoHorariosChips" class="chip-list" style="margin-bottom:14px;"></div>
+
+        <label>Gerar horários automaticamente (por intervalo)</label>
+        <div class="row2" style="margin-bottom:10px;">
+          <div>
+            <label style="font-weight:400;font-size:12px;">Início</label>
+            <input type="text" id="postoIntervaloInicio" placeholder="HH:MM" value="06:00">
+          </div>
+          <div>
+            <label style="font-weight:400;font-size:12px;">Fim</label>
+            <input type="text" id="postoIntervaloFim" placeholder="HH:MM" value="18:00">
+          </div>
+        </div>
+        <div class="row2" style="margin-bottom:14px;">
+          <div>
+            <label style="font-weight:400;font-size:12px;">A cada (minutos)</label>
+            <input type="number" id="postoIntervaloMinutos" placeholder="Ex: 60" value="60">
+          </div>
+          <button class="btn btn-ghost" style="align-self:flex-end;" onclick="gerarHorariosAutomaticos()">⏱ Gerar horários</button>
+        </div>
         <button class="btn btn-amber btn-full" id="postoSalvarBtn" onclick="salvarPosto()">Adicionar posto</button>
         <button class="btn btn-ghost btn-full" id="postoCancelarBtn" style="display:none;margin-top:8px;" onclick="cancelarEdicaoPosto()">Cancelar edição</button>
         <div id="postoList" style="margin-top:14px;"><div class="empty">Nenhum posto cadastrado ainda.</div></div>
@@ -743,6 +762,36 @@ function removerHorarioPosto(i){
   postoHorariosTemp.splice(i, 1);
   renderHorariosChips();
 }
+function gerarHorariosAutomaticos(){
+  const iniStr = document.getElementById('postoIntervaloInicio').value.trim();
+  const fimStr = document.getElementById('postoIntervaloFim').value.trim();
+  const passo = parseInt(document.getElementById('postoIntervaloMinutos').value, 10);
+  const re = /^([01]\d|2[0-3]):([0-5]\d)$/;
+  if(!re.test(iniStr) || !re.test(fimStr)){
+    alert('Informe início e fim no formato HH:MM (ex: 06:00).');
+    return;
+  }
+  if(!passo || passo <= 0){
+    alert('Informe um intervalo em minutos maior que zero.');
+    return;
+  }
+  const [hIni, mIni] = iniStr.split(':').map(Number);
+  const [hFim, mFim] = fimStr.split(':').map(Number);
+  let cursor = hIni * 60 + mIni;
+  let fim = hFim * 60 + mFim;
+  if(fim <= cursor) fim += 24 * 60; // permite virar a madrugada (ex: 22:00 até 06:00)
+  const gerados = [];
+  while(cursor <= fim){
+    const hh = String(Math.floor((cursor % 1440) / 60)).padStart(2, '0');
+    const mm = String(cursor % 60).padStart(2, '0');
+    gerados.push(hh + ':' + mm);
+    cursor += passo;
+  }
+  gerados.forEach(h => { if(!postoHorariosTemp.includes(h)) postoHorariosTemp.push(h); });
+  postoHorariosTemp.sort();
+  renderHorariosChips();
+  showBanner('✔ ' + gerados.length + ' horário(s) gerado(s) de ' + iniStr + ' até ' + fimStr + '.', 'ok');
+}
 
 function limparFormularioPosto(){
   document.getElementById('postoNome').value = '';
@@ -895,6 +944,15 @@ function isHoje(ts){
   const now = new Date();
   return d.toDateString() === now.toDateString();
 }
+// Data efetiva de um registro de ronda: usa o carimbo do servidor quando já
+// confirmado; enquanto isso não acontece (conexão fraca), cai no horário
+// registrado no próprio aparelho no momento do escaneamento, para o item
+// aparecer no histórico imediatamente em vez de ficar "sumido" até sincronizar.
+function dataEfetiva(s){
+  if(s.timestamp && s.timestamp.toDate) return s.timestamp.toDate();
+  if(s.clientTime) return new Date(s.clientTime);
+  return new Date();
+}
 
 /* ---------- Role gate ---------- */
 function askAdminPin(){
@@ -1013,8 +1071,11 @@ function dispararAlertaRonda(horario){
 
   if('Notification' in window && Notification.permission === 'granted'){
     try{
-      new Notification('⏰ Hora da ronda', {
-        body: 'Ronda programada para ' + horario + ' no posto "' + currentPostoNome + '".'
+      new Notification('⏰ Hora da ronda — ' + currentVigilante, {
+        body: 'Ronda programada para ' + horario + ' no posto "' + currentPostoNome + '". Toque para confirmar.',
+        tag: 'ronda-alerta-' + currentPostoId,
+        requireInteraction: true,
+        vibrate: [300, 150, 300, 150, 300]
       });
     }catch(e){}
   }
@@ -1458,10 +1519,12 @@ function processarPontoEscaneado(cpId, cp){
       lng: pos.coords.longitude,
       distancia: dist,
       status: status,
+      clientTime: Date.now(),
       timestamp: firebase.firestore.FieldValue.serverTimestamp()
     }).then(() => {
       mostrarUltimoScan(cp.nome, dist, status);
-      carregarHistoricoVigilante();
+      // Não é preciso recarregar manualmente: o listener de
+      // carregarHistoricoVigilante() já atualiza a lista em tempo real.
       scannerBusy = false;
       document.getElementById('scanIdle').style.display = 'block';
     });
@@ -1489,28 +1552,42 @@ function mostrarUltimoScan(nome, dist, status){
     <button class="btn btn-ghost btn-full" style="margin-top:10px;" onclick="trocarVigilante()">↩️ Voltar / Trocar vigilante</button>`;
 }
 
+let vigHistoricoUnsub = null;
 function carregarHistoricoVigilante(){
-  scansRef.where('vigilante','==', currentVigilante).orderBy('timestamp','desc').limit(50).onSnapshot(snap => {
-    const el = document.getElementById('vigHistorico');
-    const hoje = [];
-    snap.forEach(doc => { const s = doc.data(); if(isHoje(s.timestamp)) hoje.push(s); });
-    if(!hoje.length){
-      el.innerHTML = '<div class="empty">Nenhum ponto escaneado ainda hoje.</div>';
-      return;
-    }
-    el.innerHTML = '';
-    hoje.forEach(s => {
-      const div = document.createElement('div');
-      div.className = 'cp-item';
-      div.innerHTML = `
-        <div class="info">
-          <b>${s.checkpointNome}</b>
-          <small>${fmtHora(s.timestamp)} · ${s.distancia.toFixed(0)}m</small>
-        </div>
-        <span class="pill ${s.status === 'valido' ? 'pill-ok' : 'pill-out'}">${s.status === 'valido' ? '✔' : '⚠'}</span>`;
-      el.appendChild(div);
+  // Evita acumular listeners quando o vigilante é trocado várias vezes
+  // sem recarregar a página.
+  if(vigHistoricoUnsub){ vigHistoricoUnsub(); vigHistoricoUnsub = null; }
+  vigHistoricoUnsub = scansRef.where('vigilante','==', currentVigilante)
+    .orderBy('timestamp','desc').limit(50)
+    .onSnapshot(snap => {
+      const el = document.getElementById('vigHistorico');
+      let hoje = [];
+      snap.forEach(doc => {
+        const s = doc.data();
+        const d = dataEfetiva(s);
+        if(d.toDateString() === new Date().toDateString()) hoje.push({s, d});
+      });
+      if(!hoje.length){
+        el.innerHTML = '<div class="empty">Nenhum ponto escaneado ainda hoje.</div>';
+        return;
+      }
+      // Mais antigo primeiro, mais recente por último.
+      hoje.sort((a, b) => a.d - b.d);
+      el.innerHTML = '';
+      hoje.forEach(({s, d}) => {
+        const div = document.createElement('div');
+        div.className = 'cp-item';
+        div.innerHTML = `
+          <div class="info">
+            <b>${s.checkpointNome}</b>
+            <small>${d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})} · ${s.distancia.toFixed(0)}m</small>
+          </div>
+          <span class="pill ${s.status === 'valido' ? 'pill-ok' : 'pill-out'}">${s.status === 'valido' ? '✔' : '⚠'}</span>`;
+        el.appendChild(div);
+      });
+    }, err => {
+      console.warn('Erro ao carregar histórico do vigilante:', err);
     });
-  });
 }
 
 /* ---------- PWA: registro do service worker ---------- */

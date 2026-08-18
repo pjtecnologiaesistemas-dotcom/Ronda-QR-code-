@@ -53,6 +53,12 @@
     border:1px solid var(--amber-dim);border-radius:20px;padding:5px 12px;cursor:pointer;
     background:rgba(244,180,0,0.06);
   }
+  .status-banner{
+    display:none;padding:10px 16px;font-size:12.5px;font-family:'IBM Plex Mono',monospace;
+    text-align:center;border-bottom:1px solid var(--line);
+  }
+  .status-banner.error{display:block;background:rgba(229,72,77,0.1);color:var(--red);}
+  .status-banner.ok{display:block;background:rgba(62,207,142,0.1);color:var(--green);}
   main{max-width:920px;margin:0 auto;padding:18px 16px 60px;}
 
   /* ---- role gate ---- */
@@ -193,6 +199,7 @@
   </div>
   <div class="role-badge" id="roleBadge" onclick="logoutRole()" style="display:none;"></div>
 </header>
+<div class="status-banner" id="statusBanner"></div>
 
 <main>
 
@@ -218,6 +225,7 @@
   <div id="adminArea" style="display:none;">
     <div class="tabs">
       <div class="tab active" data-tab="pontos" onclick="showAdminTab('pontos')">Pontos de Ronda</div>
+      <div class="tab" data-tab="equipe" onclick="showAdminTab('equipe')">Equipe</div>
       <div class="tab" data-tab="imprimir" onclick="showAdminTab('imprimir')">Imprimir QR</div>
       <div class="tab" data-tab="relatorio" onclick="showAdminTab('relatorio')">Relatório</div>
     </div>
@@ -245,8 +253,8 @@
             <input type="number" id="cpRaio" value="30">
           </div>
           <div>
-            <label>Posto / Cliente (opcional)</label>
-            <input type="text" id="cpPosto" placeholder="Ex: Condomínio Alfa">
+            <label>Posto / Cliente</label>
+            <select id="cpPosto"><option value="">Sem posto definido</option></select>
           </div>
         </div>
         <button class="btn btn-ghost" style="margin-bottom:10px;" onclick="usarLocalizacaoAtual()">📍 Usar minha localização atual</button>
@@ -256,6 +264,38 @@
       <div class="card">
         <h3>Pontos cadastrados</h3>
         <div id="cpList"><div class="empty">Nenhum ponto cadastrado ainda.</div></div>
+      </div>
+    </div>
+
+    <!-- EQUIPE -->
+    <div class="tab-panel" id="panel-equipe" style="display:none;">
+      <div class="card">
+        <h3>Postos</h3>
+        <div class="desc">Cadastre os postos/clientes atendidos. Os pontos de ronda e os vigilantes são vinculados a um posto.</div>
+        <div class="row2">
+          <input type="text" id="postoNome" placeholder="Nome do posto (ex: Condomínio Alfa)" style="margin-bottom:0;">
+          <button class="btn btn-amber" onclick="salvarPosto()">Adicionar posto</button>
+        </div>
+        <div id="postoList" style="margin-top:14px;"><div class="empty">Nenhum posto cadastrado ainda.</div></div>
+      </div>
+
+      <div class="card">
+        <h3>Vigilantes</h3>
+        <div class="desc">Cadastre os vigilantes de cada posto. Ao iniciar uma ronda, o vigilante seleciona o posto e escolhe o próprio nome nesta lista — assim fica registrado com precisão quem iniciou cada ronda.</div>
+        <label>Nome completo</label>
+        <input type="text" id="vigNomeAdmin" placeholder="Nome do vigilante">
+        <div class="row2">
+          <div>
+            <label>Matrícula (opcional)</label>
+            <input type="text" id="vigMatricula" placeholder="Ex: 0231">
+          </div>
+          <div>
+            <label>Posto</label>
+            <select id="vigPostoSelect"><option value="">Selecione um posto</option></select>
+          </div>
+        </div>
+        <button class="btn btn-amber btn-full" onclick="salvarVigilante()">Adicionar vigilante</button>
+        <div id="vigilanteList" style="margin-top:14px;"><div class="empty">Nenhum vigilante cadastrado ainda.</div></div>
       </div>
     </div>
 
@@ -287,8 +327,8 @@
         </div>
         <div style="overflow-x:auto;">
           <table>
-            <thead><tr><th>Hora</th><th>Vigilante</th><th>Ponto</th><th>Distância</th><th>Status</th></tr></thead>
-            <tbody id="tbodyRelatorio"><tr><td colspan="5" class="empty">Sem registros.</td></tr></tbody>
+            <thead><tr><th>Hora</th><th>Vigilante</th><th>Posto</th><th>Ponto</th><th>Distância</th><th>Status</th></tr></thead>
+            <tbody id="tbodyRelatorio"><tr><td colspan="6" class="empty">Sem registros.</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -299,9 +339,12 @@
   <div id="vigArea" style="display:none;">
     <div class="card" id="vigLoginCard">
       <h3>Identifique-se</h3>
-      <label>Seu nome</label>
-      <input type="text" id="vigNome" placeholder="Nome completo">
+      <label>Posto</label>
+      <select id="vigPostoLogin" onchange="atualizarVigilantesDoPosto()"><option value="">Selecione o posto</option></select>
+      <label>Vigilante</label>
+      <select id="vigNomeSelect"><option value="">Selecione seu nome</option></select>
       <button class="btn btn-amber btn-full" onclick="confirmarVigilante()">Iniciar ronda</button>
+      <div class="desc" style="margin-top:10px;margin-bottom:0;">Seu nome não está na lista? Peça ao administrador para cadastrar você na aba Equipe.</div>
     </div>
 
     <div id="vigScanCard" style="display:none;">
@@ -348,11 +391,154 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const checkpointsRef = db.collection('ronda_checkpoints');
 const scansRef = db.collection('ronda_scans');
+const postosRef = db.collection('ronda_postos');
+const vigilantesRef = db.collection('ronda_vigilantes');
+
+function showBanner(msg, type){
+  const b = document.getElementById('statusBanner');
+  b.textContent = msg;
+  b.className = 'status-banner ' + type;
+  if(type === 'ok'){
+    setTimeout(() => { b.className = 'status-banner'; }, 3500);
+  }
+}
+
+// Testa a conexão/permissões com o Firestore assim que a página carrega.
+// Se as regras de segurança estiverem bloqueando (padrão do modo "produção"),
+// isso avisa imediatamente em vez de deixar o cadastro falhar em silêncio.
+checkpointsRef.limit(1).get()
+  .then(() => { /* conexão ok, nada a mostrar */ })
+  .catch(err => {
+    showBanner('⚠ Sem acesso ao banco de dados (Firestore): ' + err.message + ' — verifique as regras de segurança no Firebase Console.', 'error');
+  });
 
 let checkpointsCache = {};
-let currentVigilante = localStorage.getItem('ronda_vig_nome') || '';
+let postosCache = {};
+let vigilantesCache = {};
+let currentVigilante = '';      // nome do vigilante logado (mantido p/ histórico)
+let currentVigilanteId = '';
+let currentPostoId = '';
+let currentPostoNome = '';
 let html5QrCode = null;
 let scannerBusy = false;
+
+/* ---------- Postos e Vigilantes (cadastro do admin, usado também no login do vigilante) ---------- */
+postosRef.orderBy('nome').onSnapshot(snap => {
+  postosCache = {};
+  snap.forEach(doc => postosCache[doc.id] = doc.data());
+  renderPostoList();
+  renderPostoSelects();
+}, err => showBanner('⚠ Erro ao carregar postos: ' + err.message, 'error'));
+
+vigilantesRef.orderBy('nome').onSnapshot(snap => {
+  vigilantesCache = {};
+  snap.forEach(doc => vigilantesCache[doc.id] = doc.data());
+  renderVigilanteList();
+  atualizarVigilantesDoPosto();
+}, err => showBanner('⚠ Erro ao carregar vigilantes: ' + err.message, 'error'));
+
+function renderPostoList(){
+  const el = document.getElementById('postoList');
+  if(!el) return;
+  const ids = Object.keys(postosCache);
+  if(!ids.length){ el.innerHTML = '<div class="empty">Nenhum posto cadastrado ainda.</div>'; return; }
+  el.innerHTML = '';
+  ids.forEach(id => {
+    const p = postosCache[id];
+    const div = document.createElement('div');
+    div.className = 'cp-item';
+    div.innerHTML = `<div class="info"><b>${p.nome}</b></div>
+      <div class="cp-actions"><button class="icon-btn" onclick="excluirPosto('${id}')">Excluir</button></div>`;
+    el.appendChild(div);
+  });
+}
+
+function renderVigilanteList(){
+  const el = document.getElementById('vigilanteList');
+  if(!el) return;
+  const ids = Object.keys(vigilantesCache);
+  if(!ids.length){ el.innerHTML = '<div class="empty">Nenhum vigilante cadastrado ainda.</div>'; return; }
+  el.innerHTML = '';
+  ids.forEach(id => {
+    const v = vigilantesCache[id];
+    const div = document.createElement('div');
+    div.className = 'cp-item';
+    div.innerHTML = `<div class="info"><b>${v.nome}</b><small>${v.postoNome || 'sem posto'}${v.matricula ? ' · matrícula ' + v.matricula : ''}</small></div>
+      <div class="cp-actions"><button class="icon-btn" onclick="excluirVigilante('${id}')">Excluir</button></div>`;
+    el.appendChild(div);
+  });
+}
+
+function renderPostoSelects(){
+  const ids = Object.keys(postosCache);
+  const opts = ids.map(id => `<option value="${id}">${postosCache[id].nome}</option>`).join('');
+
+  const cpSel = document.getElementById('cpPosto');
+  if(cpSel){ const cur = cpSel.value; cpSel.innerHTML = '<option value="">Sem posto definido</option>' + opts; cpSel.value = cur; }
+
+  const vpSel = document.getElementById('vigPostoSelect');
+  if(vpSel){ const cur = vpSel.value; vpSel.innerHTML = '<option value="">Selecione um posto</option>' + opts; vpSel.value = cur; }
+
+  const loginSel = document.getElementById('vigPostoLogin');
+  if(loginSel){
+    const cur = loginSel.value;
+    loginSel.innerHTML = '<option value="">Selecione o posto</option>' + opts;
+    loginSel.value = cur;
+    atualizarVigilantesDoPosto();
+  }
+}
+
+function atualizarVigilantesDoPosto(){
+  const sel = document.getElementById('vigNomeSelect');
+  const loginSel = document.getElementById('vigPostoLogin');
+  if(!sel || !loginSel) return;
+  const postoId = loginSel.value;
+  const cur = sel.value;
+  if(!postoId){
+    sel.innerHTML = '<option value="">Selecione o posto primeiro</option>';
+    return;
+  }
+  const filtrados = Object.keys(vigilantesCache).filter(id => vigilantesCache[id].postoId === postoId);
+  if(!filtrados.length){
+    sel.innerHTML = '<option value="">Nenhum vigilante cadastrado neste posto</option>';
+    return;
+  }
+  sel.innerHTML = '<option value="">Selecione seu nome</option>' + filtrados.map(id => `<option value="${id}">${vigilantesCache[id].nome}</option>`).join('');
+  sel.value = cur;
+}
+
+function salvarPosto(){
+  const nome = document.getElementById('postoNome').value.trim();
+  if(!nome){ alert('Informe o nome do posto.'); return; }
+  postosRef.add({nome, criadoEm: firebase.firestore.FieldValue.serverTimestamp()})
+    .then(() => { document.getElementById('postoNome').value = ''; showBanner('✔ Posto "' + nome + '" cadastrado.', 'ok'); })
+    .catch(e => showBanner('⚠ Erro ao salvar posto: ' + e.message, 'error'));
+}
+function excluirPosto(id){
+  if(confirm('Excluir este posto? Vigilantes e pontos já vinculados mantêm o nome antigo até serem editados.')){
+    postosRef.doc(id).delete();
+  }
+}
+
+function salvarVigilante(){
+  const nome = document.getElementById('vigNomeAdmin').value.trim();
+  const matricula = document.getElementById('vigMatricula').value.trim();
+  const postoId = document.getElementById('vigPostoSelect').value;
+  if(!nome || !postoId){ alert('Informe o nome e selecione o posto.'); return; }
+  const postoNome = postosCache[postoId] ? postosCache[postoId].nome : '';
+  vigilantesRef.add({nome, matricula, postoId, postoNome, criadoEm: firebase.firestore.FieldValue.serverTimestamp()})
+    .then(() => {
+      document.getElementById('vigNomeAdmin').value = '';
+      document.getElementById('vigMatricula').value = '';
+      showBanner('✔ Vigilante "' + nome + '" cadastrado.', 'ok');
+    })
+    .catch(e => showBanner('⚠ Erro ao salvar vigilante: ' + e.message, 'error'));
+}
+function excluirVigilante(id){
+  if(confirm('Remover este vigilante da lista?')){
+    vigilantesRef.doc(id).delete();
+  }
+}
 
 /* ---------- Utils ---------- */
 function haversine(lat1, lon1, lat2, lon2){
@@ -395,11 +581,24 @@ function enterVigilante(){
   const b = document.getElementById('roleBadge');
   b.style.display = 'inline-block';
   b.textContent = 'VIGILANTE · sair';
-  if(currentVigilante){
-    document.getElementById('vigNome').value = currentVigilante;
-    confirmarVigilante();
-  }
   loadCheckpointsForScanning();
+
+  const savedPostoId = localStorage.getItem('ronda_posto_id');
+  const savedVigId = localStorage.getItem('ronda_vig_id');
+  if(savedPostoId && savedVigId){
+    // pequena espera para os selects de posto/vigilante serem populados pelo Firestore
+    const tentarRestaurar = (tentativas) => {
+      if(postosCache[savedPostoId] && vigilantesCache[savedVigId]){
+        document.getElementById('vigPostoLogin').value = savedPostoId;
+        atualizarVigilantesDoPosto();
+        document.getElementById('vigNomeSelect').value = savedVigId;
+        confirmarVigilante();
+      } else if(tentativas > 0){
+        setTimeout(() => tentarRestaurar(tentativas - 1), 400);
+      }
+    };
+    tentarRestaurar(5);
+  }
 }
 function logoutRole(){
   location.reload();
@@ -412,6 +611,7 @@ function showAdminTab(name){
   document.getElementById('panel-' + name).style.display = 'block';
   if(name === 'imprimir') renderPrintGrid();
   if(name === 'relatorio') { populateFilters(); }
+  if(name === 'equipe') { renderPostoList(); renderVigilanteList(); renderPostoSelects(); }
 }
 
 function initAdmin(){
@@ -462,19 +662,29 @@ function salvarCheckpoint(){
   const lat = parseFloat(document.getElementById('cpLat').value);
   const lng = parseFloat(document.getElementById('cpLng').value);
   const raio = parseInt(document.getElementById('cpRaio').value) || 30;
-  const posto = document.getElementById('cpPosto').value.trim();
+  const postoId = document.getElementById('cpPosto').value;
+  const posto = postoId && postosCache[postoId] ? postosCache[postoId].nome : '';
   if(!nome || isNaN(lat) || isNaN(lng)){
     alert('Preencha nome, latitude e longitude (ou use "Usar minha localização atual").');
     return;
   }
-  checkpointsRef.add({nome, lat, lng, raio, posto, criadoEm: firebase.firestore.FieldValue.serverTimestamp()})
-    .then(() => {
-      document.getElementById('cpNome').value = '';
-      document.getElementById('cpLat').value = '';
-      document.getElementById('cpLng').value = '';
-      document.getElementById('cpPosto').value = '';
+  checkpointsRef.add({nome, lat, lng, raio, postoId, posto, criadoEm: firebase.firestore.FieldValue.serverTimestamp()})
+    .then(docRef => {
+      // Confirma no servidor (não só localmente) que o ponto realmente foi gravado.
+      return docRef.get({source: 'server'});
     })
-    .catch(e => alert('Erro ao salvar: ' + e.message));
+    .then(snap => {
+      if(snap.exists){
+        showBanner('✔ Ponto "' + nome + '" salvo no banco de dados.', 'ok');
+        document.getElementById('cpNome').value = '';
+        document.getElementById('cpLat').value = '';
+        document.getElementById('cpLng').value = '';
+        document.getElementById('cpPosto').value = '';
+      } else {
+        showBanner('⚠ O ponto não foi confirmado no servidor. Verifique as regras do Firestore.', 'error');
+      }
+    })
+    .catch(e => showBanner('⚠ Erro ao salvar no Firestore: ' + e.message, 'error'));
 }
 
 function excluirCheckpoint(id){
@@ -549,12 +759,13 @@ function aplicarFiltros(){
   });
 
   const tbody = document.getElementById('tbodyRelatorio');
-  tbody.innerHTML = rows.length ? '' : '<tr><td colspan="5" class="empty">Sem registros para este filtro.</td></tr>';
+  tbody.innerHTML = rows.length ? '' : '<tr><td colspan="6" class="empty">Sem registros para este filtro.</td></tr>';
   rows.forEach(s => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="mono">${fmtHora(s.timestamp)}</td>
       <td>${s.vigilante}</td>
+      <td>${s.posto || '--'}</td>
       <td>${s.checkpointNome}</td>
       <td class="mono">${s.distancia != null ? s.distancia.toFixed(0) + 'm' : '--'}</td>
       <td><span class="pill ${s.status === 'valido' ? 'pill-ok' : 'pill-out'}">${s.status === 'valido' ? '✔ dentro' : '⚠ fora'}</span></td>`;
@@ -568,10 +779,10 @@ function aplicarFiltros(){
 
 function exportarCSV(){
   if(!window.__allScans || !window.__allScans.length){ alert('Nada para exportar.'); return; }
-  let csv = 'Data/Hora,Vigilante,Ponto,Latitude,Longitude,Distancia(m),Status\n';
+  let csv = 'Data/Hora,Vigilante,Posto,Ponto,Latitude,Longitude,Distancia(m),Status\n';
   window.__allScans.forEach(s => {
     const d = s.timestamp && s.timestamp.toDate ? s.timestamp.toDate() : new Date(s.timestamp);
-    csv += `${d.toLocaleString('pt-BR')},${s.vigilante},${s.checkpointNome},${s.lat},${s.lng},${s.distancia != null ? s.distancia.toFixed(0) : ''},${s.status}\n`;
+    csv += `${d.toLocaleString('pt-BR')},${s.vigilante},${s.posto || ''},${s.checkpointNome},${s.lat},${s.lng},${s.distancia != null ? s.distancia.toFixed(0) : ''},${s.status}\n`;
   });
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
   const url = URL.createObjectURL(blob);
@@ -589,10 +800,17 @@ function loadCheckpointsForScanning(){
 }
 
 function confirmarVigilante(){
-  const nome = document.getElementById('vigNome').value.trim();
-  if(!nome){ alert('Informe seu nome.'); return; }
-  currentVigilante = nome;
-  localStorage.setItem('ronda_vig_nome', nome);
+  const postoId = document.getElementById('vigPostoLogin').value;
+  const vigId = document.getElementById('vigNomeSelect').value;
+  if(!postoId || !vigId){ alert('Selecione o posto e o seu nome na lista.'); return; }
+  const v = vigilantesCache[vigId];
+  if(!v){ alert('Vigilante não encontrado. Tente novamente em alguns segundos.'); return; }
+  currentVigilante = v.nome;
+  currentVigilanteId = vigId;
+  currentPostoId = postoId;
+  currentPostoNome = postosCache[postoId] ? postosCache[postoId].nome : '';
+  localStorage.setItem('ronda_vig_id', vigId);
+  localStorage.setItem('ronda_posto_id', postoId);
   document.getElementById('vigLoginCard').style.display = 'none';
   document.getElementById('vigScanCard').style.display = 'block';
   carregarHistoricoVigilante();
@@ -645,6 +863,8 @@ function onScanSuccess(decodedText){
       checkpointId: payload.cpId,
       checkpointNome: cp.nome,
       vigilante: currentVigilante,
+      vigilanteId: currentVigilanteId,
+      posto: currentPostoNome,
       lat: pos.coords.latitude,
       lng: pos.coords.longitude,
       distancia: dist,

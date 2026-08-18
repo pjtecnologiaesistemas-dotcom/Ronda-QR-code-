@@ -75,6 +75,21 @@
   .gate-login{width:100%;max-width:300px;text-align:left;}
   .gate-login label{margin-top:2px;}
 
+  .chip-list{display:flex;flex-wrap:wrap;gap:8px;}
+  .chip{
+    display:flex;align-items:center;gap:6px;background:var(--panel-2);border:1px solid var(--line);
+    border-radius:20px;padding:5px 8px 5px 12px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text);
+  }
+  .chip button{
+    background:transparent;border:none;color:var(--sub);cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;
+  }
+  .chip button:hover{color:var(--red);}
+  .ronda-config{
+    display:flex;gap:14px;flex-wrap:wrap;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--sub);
+    margin-top:4px;
+  }
+  .ronda-config b{color:var(--amber);}
+
   /* ---- tabs ---- */
   .tabs{display:flex;gap:6px;margin-bottom:18px;overflow-x:auto;padding-bottom:2px;}
   .tab{
@@ -190,6 +205,12 @@
   .modal-actions{display:flex;gap:8px;}
   .modal-actions .btn{flex:1;margin-bottom:0;}
 
+  /* alerta de ronda programada */
+  .alert-balloon{border-color:var(--red);animation:alertPulse 1s ease-in-out infinite;max-width:320px;}
+  @keyframes alertPulse{0%,100%{box-shadow:0 16px 46px rgba(0,0,0,0.55);}50%{box-shadow:0 0 0 8px rgba(229,72,77,0.25),0 16px 46px rgba(0,0,0,0.55);}}
+  .alert-balloon::before{border-left-color:var(--red);border-top-color:var(--red);}
+  .alert-msg{color:var(--text);font-size:14px;text-align:center;margin-bottom:16px;line-height:1.4;}
+
   @media print{
     header.top,.tabs,.card:not(.print-area){display:none !important;}
     body{background:#fff;color:#000;}
@@ -243,19 +264,30 @@
 </div>
 <div class="status-banner" id="statusBanner"></div>
 
+<!-- ALERTA DE RONDA PROGRAMADA -->
+<div class="modal-overlay" id="rondaAlertOverlay" style="display:none;">
+  <div class="modal-balloon alert-balloon">
+    <h4>⏰ Hora da ronda</h4>
+    <div class="alert-msg" id="rondaAlertMsg"></div>
+    <div class="modal-actions">
+      <button class="btn btn-amber btn-full" onclick="confirmarAlertaRonda()">OK, iniciar ronda</button>
+    </div>
+  </div>
+</div>
+
 <main>
 
-  <!-- LOGIN DO VIGILANTE -->
+  <!-- LOGIN DO POSTO -->
   <div class="gate" id="gate">
     <a class="admin-link" onclick="askAdminPin()">Administrador</a>
-    <h2>Acesso do vigilante</h2>
-    <p>Entre com o usuário e senha cadastrados pelo administrador.</p>
+    <h2>Acesso do posto</h2>
+    <p>Entre com o usuário e senha do posto, cadastrados pelo administrador.</p>
     <div class="gate-login">
       <label>Usuário</label>
-      <input type="text" id="loginUsuario" placeholder="usuário" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('loginSenha').focus();">
+      <input type="text" id="loginUsuario" placeholder="usuário do posto" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('loginSenha').focus();">
       <label>Senha</label>
-      <input type="password" id="loginSenha" placeholder="senha" autocomplete="current-password" onkeydown="if(event.key==='Enter')loginVigilante();">
-      <div class="modal-error" id="loginError">Usuário ou senha incorretos.</div>
+      <input type="password" id="loginSenha" placeholder="senha do posto" autocomplete="current-password" onkeydown="if(event.key==='Enter')loginVigilante();">
+      <div class="modal-error" id="loginError">Usuário ou senha do posto incorretos.</div>
       <button class="btn btn-amber btn-full" onclick="loginVigilante()">Entrar</button>
     </div>
   </div>
@@ -310,18 +342,36 @@
     <!-- EQUIPE -->
     <div class="tab-panel" id="panel-equipe" style="display:none;">
       <div class="card">
-        <h3>Postos</h3>
-        <div class="desc">Cadastre os postos/clientes atendidos. Os pontos de ronda e os vigilantes são vinculados a um posto.</div>
+        <h3 id="postoFormTitle">Postos</h3>
+        <div class="desc">Cadastre os postos/clientes atendidos, com usuário e senha de acesso (é esse login que valida o posto na tela inicial) e a configuração de ronda.</div>
+        <label>Nome do posto</label>
+        <input type="text" id="postoNome" placeholder="Nome do posto (ex: Condomínio Alfa)">
         <div class="row2">
-          <input type="text" id="postoNome" placeholder="Nome do posto (ex: Condomínio Alfa)" style="margin-bottom:0;">
-          <button class="btn btn-amber" onclick="salvarPosto()">Adicionar posto</button>
+          <div>
+            <label>Usuário de acesso</label>
+            <input type="text" id="postoUsuario" placeholder="usuário do posto" autocomplete="off">
+          </div>
+          <div>
+            <label>Senha de acesso</label>
+            <input type="text" id="postoSenha" placeholder="senha do posto" autocomplete="off">
+          </div>
         </div>
+        <label>Duração esperada da ronda (minutos)</label>
+        <input type="number" id="postoDuracao" placeholder="Ex: 30">
+        <label>Horários programados da ronda</label>
+        <div class="row2" style="margin-bottom:0;">
+          <input type="text" id="postoHorarioInput" placeholder="HH:MM" style="margin-bottom:10px;" onkeydown="if(event.key==='Enter'){event.preventDefault();adicionarHorarioPosto();}">
+          <button class="btn btn-ghost" style="margin-bottom:10px;" onclick="adicionarHorarioPosto()">+ Adicionar horário</button>
+        </div>
+        <div id="postoHorariosChips" class="chip-list" style="margin-bottom:14px;"></div>
+        <button class="btn btn-amber btn-full" id="postoSalvarBtn" onclick="salvarPosto()">Adicionar posto</button>
+        <button class="btn btn-ghost btn-full" id="postoCancelarBtn" style="display:none;margin-top:8px;" onclick="cancelarEdicaoPosto()">Cancelar edição</button>
         <div id="postoList" style="margin-top:14px;"><div class="empty">Nenhum posto cadastrado ainda.</div></div>
       </div>
 
       <div class="card">
         <h3 id="vigFormTitle">Vigilantes</h3>
-        <div class="desc">Cadastre os vigilantes de cada posto, com usuário e senha de acesso. É esse login que o vigilante usa na tela inicial para iniciar a ronda.</div>
+        <div class="desc">Cadastre os nomes dos vigilantes de cada posto. Sem login individual — servem apenas para identificar quem está de ronda, e podem ser selecionados/trocados livremente depois do login do posto.</div>
         <label>Nome completo</label>
         <input type="text" id="vigNomeAdmin" placeholder="Nome do vigilante">
         <div class="row2">
@@ -332,16 +382,6 @@
           <div>
             <label>Posto</label>
             <select id="vigPostoSelect"><option value="">Selecione um posto</option></select>
-          </div>
-        </div>
-        <div class="row2">
-          <div>
-            <label>Usuário</label>
-            <input type="text" id="vigUsuarioAdmin" placeholder="usuário de acesso" autocomplete="off">
-          </div>
-          <div>
-            <label>Senha</label>
-            <input type="text" id="vigSenhaAdmin" placeholder="senha de acesso" autocomplete="off">
           </div>
         </div>
         <button class="btn btn-amber btn-full" id="vigSalvarBtn" onclick="salvarVigilante()">Adicionar vigilante</button>
@@ -388,10 +428,25 @@
 
   <!-- VIGILANTE AREA -->
   <div id="vigArea" style="display:none;">
+    <div id="vigSelectCard" class="card" style="display:none;">
+      <h3>Quem está de ronda agora?</h3>
+      <div class="desc">Selecione o vigilante responsável por esta ronda. Dá para trocar isso a qualquer momento, sem sair do posto.</div>
+      <label>Vigilante</label>
+      <select id="vigNomeSelect"><option value="">Selecione o nome</option></select>
+      <button class="btn btn-amber btn-full" onclick="confirmarVigilanteAtual()">Confirmar</button>
+    </div>
+
     <div id="vigScanCard" style="display:none;">
       <div class="cp-item">
-        <div class="info"><b id="vigAtualNome"></b><small id="vigAtualPosto"></small></div>
-        <div class="cp-actions"><button class="icon-btn" onclick="trocarVigilante()">🔁 Sair / trocar vigilante</button></div>
+        <div class="info">
+          <b id="vigAtualNome"></b>
+          <small id="vigAtualPosto"></small>
+          <div class="ronda-config" id="vigRondaConfig"></div>
+        </div>
+        <div class="cp-actions">
+          <button class="icon-btn" onclick="trocarVigilante()">🔁 Trocar</button>
+          <button class="icon-btn" onclick="sairPosto()">Sair</button>
+        </div>
       </div>
       <div class="card">
         <h3>Escanear ponto</h3>
@@ -499,10 +554,11 @@ function renderPostoList(){
   el.innerHTML = '';
   ids.forEach(id => {
     const p = postosCache[id];
+    const horarios = (p.horarios || []).join(', ') || 'não definidos';
     const div = document.createElement('div');
     div.className = 'cp-item';
-    div.innerHTML = `<div class="info"><b>${p.nome}</b></div>
-      <div class="cp-actions"><button class="icon-btn" onclick="excluirPosto('${id}')">Excluir</button></div>`;
+    div.innerHTML = `<div class="info"><b>${p.nome}</b><small>usuário ${p.usuario || '—'} · ronda ${p.duracaoMin ? p.duracaoMin + ' min' : 'sem duração definida'} · horários: ${horarios}</small></div>
+      <div class="cp-actions"><button class="icon-btn" onclick="editarPosto('${id}')">Editar</button><button class="icon-btn" onclick="excluirPosto('${id}')">Excluir</button></div>`;
     el.appendChild(div);
   });
 }
@@ -517,7 +573,7 @@ function renderVigilanteList(){
     const v = vigilantesCache[id];
     const div = document.createElement('div');
     div.className = 'cp-item';
-    div.innerHTML = `<div class="info"><b>${v.nome}</b><small>${v.postoNome || 'sem posto'}${v.matricula ? ' · matrícula ' + v.matricula : ''}${v.usuario ? ' · usuário ' + v.usuario : ''}</small></div>
+    div.innerHTML = `<div class="info"><b>${v.nome}</b><small>${v.postoNome || 'sem posto'}${v.matricula ? ' · matrícula ' + v.matricula : ''}</small></div>
       <div class="cp-actions"><button class="icon-btn" onclick="editarVigilante('${id}')">Editar</button><button class="icon-btn" onclick="excluirVigilante('${id}')">Excluir</button></div>`;
     el.appendChild(div);
   });
@@ -534,44 +590,118 @@ function renderPostoSelects(){
   if(vpSel){ const cur = vpSel.value; vpSel.innerHTML = '<option value="">Selecione um posto</option>' + opts; vpSel.value = cur; }
 }
 
+/* ---------- Postos: login (usuário/senha) + configuração da ronda ---------- */
+let editingPostoId = null;
+let postoHorariosTemp = [];
+
+function renderHorariosChips(){
+  const el = document.getElementById('postoHorariosChips');
+  el.innerHTML = postoHorariosTemp.map((h, i) =>
+    `<span class="chip">${h}<button type="button" onclick="removerHorarioPosto(${i})">✕</button></span>`
+  ).join('');
+}
+
+function adicionarHorarioPosto(){
+  const input = document.getElementById('postoHorarioInput');
+  const v = input.value.trim();
+  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(v)){ alert('Informe o horário no formato HH:MM (ex: 06:00).'); return; }
+  if(!postoHorariosTemp.includes(v)) postoHorariosTemp.push(v);
+  postoHorariosTemp.sort();
+  input.value = '';
+  renderHorariosChips();
+}
+function removerHorarioPosto(i){
+  postoHorariosTemp.splice(i, 1);
+  renderHorariosChips();
+}
+
+function limparFormularioPosto(){
+  document.getElementById('postoNome').value = '';
+  document.getElementById('postoUsuario').value = '';
+  document.getElementById('postoSenha').value = '';
+  document.getElementById('postoDuracao').value = '';
+  document.getElementById('postoHorarioInput').value = '';
+  postoHorariosTemp = [];
+  renderHorariosChips();
+}
+
 function salvarPosto(){
   const nome = document.getElementById('postoNome').value.trim();
+  const usuario = document.getElementById('postoUsuario').value.trim().toLowerCase();
+  const senha = document.getElementById('postoSenha').value.trim();
+  const duracaoMin = parseInt(document.getElementById('postoDuracao').value) || null;
+  const horarios = postoHorariosTemp.slice();
   if(!nome){ alert('Informe o nome do posto.'); return; }
-  postosRef.add({nome, criadoEm: firebase.firestore.FieldValue.serverTimestamp()})
-    .then(() => { document.getElementById('postoNome').value = ''; showBanner('✔ Posto "' + nome + '" cadastrado.', 'ok'); })
+  if(!usuario || !senha){ alert('Informe o usuário e a senha de acesso do posto.'); return; }
+  const duplicado = Object.keys(postosCache).some(id => id !== editingPostoId && postosCache[id].usuario === usuario);
+  if(duplicado){ alert('Já existe um posto com esse usuário. Escolha outro.'); return; }
+
+  if(editingPostoId){
+    const id = editingPostoId;
+    postosRef.doc(id).update({nome, usuario, senha, duracaoMin, horarios})
+      .then(() => {
+        showBanner('✔ Posto "' + nome + '" atualizado.', 'ok');
+        cancelarEdicaoPosto();
+      })
+      .catch(e => showBanner('⚠ Erro ao atualizar posto: ' + e.message, 'error'));
+    return;
+  }
+
+  postosRef.add({nome, usuario, senha, duracaoMin, horarios, criadoEm: firebase.firestore.FieldValue.serverTimestamp()})
+    .then(() => { limparFormularioPosto(); showBanner('✔ Posto "' + nome + '" cadastrado.', 'ok'); })
     .catch(e => showBanner('⚠ Erro ao salvar posto: ' + e.message, 'error'));
 }
+
+function editarPosto(id){
+  const p = postosCache[id];
+  if(!p) return;
+  editingPostoId = id;
+  document.getElementById('postoNome').value = p.nome;
+  document.getElementById('postoUsuario').value = p.usuario || '';
+  document.getElementById('postoSenha').value = p.senha || '';
+  document.getElementById('postoDuracao').value = p.duracaoMin || '';
+  postoHorariosTemp = (p.horarios || []).slice();
+  renderHorariosChips();
+  document.getElementById('postoFormTitle').textContent = 'Editar posto: ' + p.nome;
+  document.getElementById('postoSalvarBtn').textContent = 'Salvar alterações';
+  document.getElementById('postoCancelarBtn').style.display = 'block';
+  document.getElementById('postoFormTitle').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function cancelarEdicaoPosto(){
+  editingPostoId = null;
+  limparFormularioPosto();
+  document.getElementById('postoFormTitle').textContent = 'Postos';
+  document.getElementById('postoSalvarBtn').textContent = 'Adicionar posto';
+  document.getElementById('postoCancelarBtn').style.display = 'none';
+}
+
 function excluirPosto(id){
-  if(confirm('Excluir este posto? Vigilantes e pontos já vinculados mantêm o nome antigo até serem editados.')){
+  if(confirm('Excluir este posto? O login desse posto deixará de funcionar. Vigilantes e pontos já vinculados mantêm o nome antigo até serem editados.')){
     postosRef.doc(id).delete();
+    if(editingPostoId === id) cancelarEdicaoPosto();
   }
 }
 
+/* ---------- Vigilantes: apenas identificação (sem login individual) ---------- */
 let editingVigilanteId = null;
 
 function limparFormularioVigilante(){
   document.getElementById('vigNomeAdmin').value = '';
   document.getElementById('vigMatricula').value = '';
   document.getElementById('vigPostoSelect').value = '';
-  document.getElementById('vigUsuarioAdmin').value = '';
-  document.getElementById('vigSenhaAdmin').value = '';
 }
 
 function salvarVigilante(){
   const nome = document.getElementById('vigNomeAdmin').value.trim();
   const matricula = document.getElementById('vigMatricula').value.trim();
   const postoId = document.getElementById('vigPostoSelect').value;
-  const usuario = document.getElementById('vigUsuarioAdmin').value.trim().toLowerCase();
-  const senha = document.getElementById('vigSenhaAdmin').value.trim();
   if(!nome || !postoId){ alert('Informe o nome e selecione o posto.'); return; }
-  if(!usuario || !senha){ alert('Informe o usuário e a senha de acesso do vigilante.'); return; }
   const postoNome = postosCache[postoId] ? postosCache[postoId].nome : '';
-  const duplicado = Object.keys(vigilantesCache).some(id => id !== editingVigilanteId && vigilantesCache[id].usuario === usuario);
-  if(duplicado){ alert('Já existe um vigilante com esse usuário. Escolha outro.'); return; }
 
   if(editingVigilanteId){
     const id = editingVigilanteId;
-    vigilantesRef.doc(id).update({nome, matricula, postoId, postoNome, usuario, senha})
+    vigilantesRef.doc(id).update({nome, matricula, postoId, postoNome})
       .then(() => {
         showBanner('✔ Vigilante "' + nome + '" atualizado.', 'ok');
         cancelarEdicaoVigilante();
@@ -580,7 +710,7 @@ function salvarVigilante(){
     return;
   }
 
-  vigilantesRef.add({nome, matricula, postoId, postoNome, usuario, senha, criadoEm: firebase.firestore.FieldValue.serverTimestamp()})
+  vigilantesRef.add({nome, matricula, postoId, postoNome, criadoEm: firebase.firestore.FieldValue.serverTimestamp()})
     .then(() => {
       limparFormularioVigilante();
       showBanner('✔ Vigilante "' + nome + '" cadastrado.', 'ok');
@@ -595,8 +725,6 @@ function editarVigilante(id){
   document.getElementById('vigNomeAdmin').value = v.nome;
   document.getElementById('vigMatricula').value = v.matricula || '';
   document.getElementById('vigPostoSelect').value = v.postoId || '';
-  document.getElementById('vigUsuarioAdmin').value = v.usuario || '';
-  document.getElementById('vigSenhaAdmin').value = v.senha || '';
   document.getElementById('vigFormTitle').textContent = 'Editar vigilante: ' + v.nome;
   document.getElementById('vigSalvarBtn').textContent = 'Salvar alterações';
   document.getElementById('vigCancelarBtn').style.display = 'block';
@@ -612,7 +740,7 @@ function cancelarEdicaoVigilante(){
 }
 
 function excluirVigilante(id){
-  if(confirm('Remover este vigilante da lista? Ele perderá o acesso de login.')){
+  if(confirm('Remover este vigilante da lista?')){
     vigilantesRef.doc(id).delete();
     if(editingVigilanteId === id) cancelarEdicaoVigilante();
   }
@@ -665,6 +793,109 @@ function confirmarPin(){
     document.getElementById('pinInput').focus();
   }
 }
+function popularVigilantesDoPostoAtual(){
+  const sel = document.getElementById('vigNomeSelect');
+  const filtrados = Object.keys(vigilantesCache).filter(id => vigilantesCache[id].postoId === currentPostoId);
+  if(!filtrados.length){
+    sel.innerHTML = '<option value="">Nenhum vigilante cadastrado neste posto</option>';
+    return;
+  }
+  sel.innerHTML = '<option value="">Selecione o nome</option>' + filtrados.map(id => `<option value="${id}">${vigilantesCache[id].nome}</option>`).join('');
+}
+
+function atualizarRondaConfigInfo(){
+  const p = postosCache[currentPostoId];
+  const el = document.getElementById('vigRondaConfig');
+  if(!p || !el) return;
+  const duracao = p.duracaoMin ? p.duracaoMin + ' min' : 'não definida';
+  const horarios = (p.horarios && p.horarios.length) ? p.horarios.join(', ') : 'não definidos';
+  el.innerHTML = `<span>Duração esperada: <b>${duracao}</b></span><span>Horários programados: <b>${horarios}</b></span>`;
+}
+
+/* ---------- Alerta de ronda programada (som + popup) ---------- */
+let rondaAlertInterval = null;
+let rondaBeepInterval = null;
+let audioCtx = null;
+
+function tocarBeep(){
+  try{
+    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'square';
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.35, audioCtx.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.4);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.42);
+  }catch(e){ /* alguns navegadores bloqueiam áudio sem interação prévia do usuário */ }
+}
+
+function chaveAlertasHoje(postoId){
+  return 'ronda_alertado_' + postoId + '_' + new Date().toISOString().slice(0,10);
+}
+function getAlertasDisparadosHoje(postoId){
+  try{ return JSON.parse(localStorage.getItem(chaveAlertasHoje(postoId)) || '[]'); }
+  catch(e){ return []; }
+}
+function marcarAlertaDisparado(postoId, horario){
+  const lista = getAlertasDisparadosHoje(postoId);
+  if(!lista.includes(horario)){
+    lista.push(horario);
+    localStorage.setItem(chaveAlertasHoje(postoId), JSON.stringify(lista));
+  }
+}
+
+function iniciarChecagemAlertasRonda(){
+  pararChecagemAlertasRonda();
+  if('Notification' in window && Notification.permission === 'default'){
+    Notification.requestPermission();
+  }
+  verificarHorarioRonda();
+  rondaAlertInterval = setInterval(verificarHorarioRonda, 15000);
+}
+function pararChecagemAlertasRonda(){
+  if(rondaAlertInterval) clearInterval(rondaAlertInterval);
+  rondaAlertInterval = null;
+}
+
+function verificarHorarioRonda(){
+  if(!currentPostoId) return;
+  const p = postosCache[currentPostoId];
+  if(!p || !p.horarios || !p.horarios.length) return;
+  const hhmm = new Date().toTimeString().slice(0,5);
+  if(!p.horarios.includes(hhmm)) return;
+  if(getAlertasDisparadosHoje(currentPostoId).includes(hhmm)) return;
+  marcarAlertaDisparado(currentPostoId, hhmm);
+  dispararAlertaRonda(hhmm);
+}
+
+function dispararAlertaRonda(horario){
+  document.getElementById('rondaAlertMsg').textContent =
+    'A ronda programada para ' + horario + ' no posto "' + currentPostoNome + '" deve começar agora.';
+  document.getElementById('rondaAlertOverlay').style.display = 'flex';
+  tocarBeep();
+  if(rondaBeepInterval) clearInterval(rondaBeepInterval);
+  rondaBeepInterval = setInterval(tocarBeep, 1500);
+  // Para sozinho depois de 2 minutos, caso ninguém confirme (evita tocar indefinidamente).
+  setTimeout(() => { if(rondaBeepInterval){ clearInterval(rondaBeepInterval); rondaBeepInterval = null; } }, 120000);
+
+  if('Notification' in window && Notification.permission === 'granted'){
+    try{
+      new Notification('⏰ Hora da ronda', {
+        body: 'Ronda programada para ' + horario + ' no posto "' + currentPostoNome + '".'
+      });
+    }catch(e){}
+  }
+}
+
+function confirmarAlertaRonda(){
+  document.getElementById('rondaAlertOverlay').style.display = 'none';
+  if(rondaBeepInterval){ clearInterval(rondaBeepInterval); rondaBeepInterval = null; }
+}
+
 function loginVigilante(){
   const usuario = document.getElementById('loginUsuario').value.trim().toLowerCase();
   const senha = document.getElementById('loginSenha').value.trim();
@@ -675,35 +906,65 @@ function loginVigilante(){
     errEl.style.display = 'block';
     return;
   }
-  const vigId = Object.keys(vigilantesCache).find(id =>
-    vigilantesCache[id].usuario === usuario && vigilantesCache[id].senha === senha);
-  if(!vigId){
-    errEl.textContent = 'Usuário ou senha incorretos.';
+  const postoId = Object.keys(postosCache).find(id =>
+    postosCache[id].usuario === usuario && postosCache[id].senha === senha);
+  if(!postoId){
+    errEl.textContent = 'Usuário ou senha do posto incorretos.';
     errEl.style.display = 'block';
     document.getElementById('loginSenha').value = '';
     return;
   }
-  const v = vigilantesCache[vigId];
-  currentVigilante = v.nome;
-  currentVigilanteId = vigId;
-  currentPostoId = v.postoId;
-  currentPostoNome = v.postoNome || '';
+  currentPostoId = postoId;
+  currentPostoNome = postosCache[postoId].nome || '';
   localStorage.setItem('ronda_vig_usuario', usuario);
 
   document.getElementById('gate').style.display = 'none';
   document.getElementById('vigArea').style.display = 'block';
-  document.getElementById('vigScanCard').style.display = 'block';
   const b = document.getElementById('roleBadge');
   b.style.display = 'inline-block';
-  b.textContent = 'VIGILANTE · sair';
+  b.textContent = currentPostoNome + ' · sair';
+  loadCheckpointsForScanning();
+  popularVigilantesDoPostoAtual();
+  iniciarChecagemAlertasRonda();
+
+  // Conveniência: se este aparelho já tinha um vigilante confirmado para
+  // este posto, pula direto para a tela de escaneamento — mas o botão
+  // "Trocar" continua disponível a qualquer momento.
+  const savedVigId = localStorage.getItem('ronda_vig_id_' + postoId);
+  if(savedVigId && vigilantesCache[savedVigId] && vigilantesCache[savedVigId].postoId === postoId){
+    document.getElementById('vigNomeSelect').value = savedVigId;
+    confirmarVigilanteAtual();
+  } else {
+    document.getElementById('vigSelectCard').style.display = 'block';
+  }
+}
+
+function confirmarVigilanteAtual(){
+  const vigId = document.getElementById('vigNomeSelect').value;
+  if(!vigId){ alert('Selecione o vigilante responsável por esta ronda.'); return; }
+  const v = vigilantesCache[vigId];
+  if(!v){ alert('Vigilante não encontrado. Tente novamente em alguns segundos.'); return; }
+  currentVigilante = v.nome;
+  currentVigilanteId = vigId;
+  localStorage.setItem('ronda_vig_id_' + currentPostoId, vigId);
+
+  document.getElementById('vigSelectCard').style.display = 'none';
+  document.getElementById('vigScanCard').style.display = 'block';
   document.getElementById('vigAtualNome').textContent = currentVigilante;
   document.getElementById('vigAtualPosto').textContent = currentPostoNome;
   document.getElementById('lastScanBox').innerHTML = '';
-  loadCheckpointsForScanning();
+  atualizarRondaConfigInfo();
   carregarHistoricoVigilante();
 }
 
 function logoutRole(){
+  pararChecagemAlertasRonda();
+  location.reload();
+}
+
+function sairPosto(){
+  pararScanner();
+  pararChecagemAlertasRonda();
   location.reload();
 }
 
@@ -954,7 +1215,10 @@ function loadCheckpointsForScanning(){
 
 function trocarVigilante(){
   pararScanner();
-  location.reload();
+  document.getElementById('vigScanCard').style.display = 'none';
+  popularVigilantesDoPostoAtual();
+  document.getElementById('vigNomeSelect').value = currentVigilanteId || '';
+  document.getElementById('vigSelectCard').style.display = 'block';
 }
 
 function iniciarScanner(){

@@ -23,6 +23,8 @@
     --text:#e9edf2;
     --sub:#8a93a3;
     --radius:10px;
+    --cyan:#00c8f8;
+    --cyan2:#00eaff;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -43,9 +45,9 @@
   .brand-mark{
     width:36px;height:40px;display:flex;align-items:center;justify-content:center;position:relative;
   }
-  .brand-mark svg{width:100%;height:100%;filter:drop-shadow(0 0 8px rgba(244,180,0,0.35));}
-  .brand-mark .mono{position:absolute;font-family:'Rajdhani',sans-serif;font-weight:700;font-size:12px;color:#eef4ff;letter-spacing:-0.5px;}
-  .brand-mark .mono span{color:var(--amber);}
+  .brand-mark svg{position:absolute;inset:0;width:100%;height:100%;filter:drop-shadow(0 0 8px rgba(0,200,248,0.4));}
+  .brand-mark .mono{position:relative;font-family:'Rajdhani',sans-serif;font-weight:700;font-size:12px;color:#eef4ff;letter-spacing:-0.5px;white-space:nowrap;z-index:1;}
+  .brand-mark .mono span{color:var(--cyan2);}
   .brand h1{font-size:17px;margin:0;font-weight:700;letter-spacing:0.3px;}
   .brand span{display:block;font-size:11px;color:var(--sub);font-family:'IBM Plex Mono',monospace;letter-spacing:0.5px;}
   .role-badge{
@@ -207,10 +209,17 @@
             <stop offset="0%" stop-color="#0d3878"/><stop offset="100%" stop-color="#051225"/>
           </linearGradient>
           <linearGradient id="hdrHexS" x1="0" y1="0" x2="100" y2="110" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stop-color="#f4b400"/><stop offset="100%" stop-color="#00c8f8"/>
+            <stop offset="0%" stop-color="#00eaff"/><stop offset="50%" stop-color="#0088cc"/><stop offset="100%" stop-color="#00c8f8"/>
           </linearGradient>
         </defs>
-        <polygon points="50,4 96,28 96,82 50,106 4,82 4,28" fill="url(#hdrHexG)" stroke="url(#hdrHexS)" stroke-width="4"/>
+        <polygon points="50,4 96,28 96,82 50,106 4,82 4,28" fill="url(#hdrHexG)" stroke="url(#hdrHexS)" stroke-width="2.5"/>
+        <polygon points="50,12 88,33 88,78 50,98 12,78 12,33" fill="none" stroke="rgba(0,200,248,0.18)" stroke-width="1"/>
+        <circle cx="50" cy="4" r="2.5" fill="#00eaff" opacity=".8"/>
+        <circle cx="96" cy="28" r="2.5" fill="#00eaff" opacity=".8"/>
+        <circle cx="96" cy="82" r="2.5" fill="#00eaff" opacity=".8"/>
+        <circle cx="50" cy="106" r="2.5" fill="#00eaff" opacity=".8"/>
+        <circle cx="4" cy="82" r="2.5" fill="#00eaff" opacity=".8"/>
+        <circle cx="4" cy="28" r="2.5" fill="#00eaff" opacity=".8"/>
       </svg>
       <div class="mono">P<span>J</span></div>
     </div>
@@ -883,12 +892,28 @@ function iniciarScanner(){
   document.getElementById('scanIdle').style.display = 'none';
   const readerEl = document.getElementById('reader');
   readerEl.style.display = 'block';
+  readerEl.innerHTML = '';
   html5QrCode = new Html5Qrcode("reader");
   const config = { fps: 10, qrbox: 230 };
+
+  const erroCamera = (err) => {
+    const msg = (err && err.message) ? err.message : String(err);
+    alert('Não foi possível acessar a câmera: ' + msg + '\n\nVerifique se o site tem permissão de câmera nas configurações do navegador (ícone de cadeado/site na barra de endereço) e se nenhum outro app está usando a câmera no momento.');
+    pararScanner();
+  };
+
   html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess, () => {})
-    .catch(err => {
-      alert('Não foi possível acessar a câmera: ' + err);
-      pararScanner();
+    .catch(() => {
+      // Alguns aparelhos/navegadores não respeitam facingMode "environment" e
+      // rejeitam o start silenciosamente. Antes de desistir, lista as câmeras
+      // disponíveis e tenta abrir a traseira explicitamente pelo ID.
+      if(typeof Html5Qrcode.getCameras !== 'function'){ erroCamera('Câmera indisponível neste navegador.'); return; }
+      Html5Qrcode.getCameras().then(cameras => {
+        if(!cameras || !cameras.length){ erroCamera('Nenhuma câmera encontrada neste aparelho.'); return; }
+        const traseira = cameras.find(c => /back|traseir|rear|environment/i.test(c.label)) || cameras[cameras.length - 1];
+        html5QrCode.start({ deviceId: { exact: traseira.id } }, config, onScanSuccess, () => {})
+          .catch(erroCamera);
+      }).catch(erroCamera);
     });
 }
 
@@ -896,6 +921,7 @@ function pararScanner(){
   if(html5QrCode){
     html5QrCode.stop().then(() => html5QrCode.clear()).catch(()=>{});
   }
+  document.getElementById('reader').innerHTML = '';
   document.getElementById('reader').style.display = 'none';
   document.getElementById('scanIdle').style.display = 'block';
 }

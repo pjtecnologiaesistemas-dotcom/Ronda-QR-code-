@@ -520,9 +520,10 @@
           <div class="row2" style="margin-bottom:10px;">
             <div>
               <label style="font-weight:400;font-size:12px;">A cada (minutos)</label>
-              <input type="number" id="postoIntervaloMinutos" placeholder="Ex: 60" value="60" oninput="gerarHorariosAutomaticos(true, true)">
+              <input type="number" id="postoIntervaloMinutos" placeholder="Ex: 60" value="60" step="5" min="1" oninput="gerarHorariosAutomaticos(true, true)">
             </div>
           </div>
+          <button type="button" class="btn btn-ghost btn-full" style="margin-bottom:14px;" onclick="aplicarRonda24Horas()">🕐 Ronda 24 horas por dia (00:00–23:59)</button>
         </div>
 
         <div class="desc" id="postoHorariosPreview" style="margin-top:-4px;">Nenhum horário definido ainda.</div>
@@ -829,6 +830,16 @@ function removerHorarioPosto(i){
   postoHorariosTemp.splice(i, 1);
   renderHorariosChips();
 }
+function aplicarRonda24Horas(){
+  document.getElementById('postoIntervaloInicio').value = '00:00';
+  document.getElementById('postoIntervaloFim').value = '00:00'; // início = fim → gera o dia inteiro, sem duplicar 00:00
+  // Se ainda não tiver um intervalo em minutos definido, sugere 60min (pode trocar para 30 etc.)
+  const min = document.getElementById('postoIntervaloMinutos');
+  if(!min.value || parseInt(min.value, 10) <= 0) min.value = 60;
+  gerarHorariosAutomaticos(true, true);
+  showBanner('✔ Ronda configurada para cobrir as 24 horas do dia, a cada ' + min.value + ' min.', 'ok');
+}
+
 function gerarHorariosAutomaticos(silencioso, preservarSelecao){
   const iniStr = document.getElementById('postoIntervaloInicio').value.trim();
   const fimStr = document.getElementById('postoIntervaloFim').value.trim();
@@ -846,9 +857,12 @@ function gerarHorariosAutomaticos(silencioso, preservarSelecao){
   const [hFim, mFim] = fimStr.split(':').map(Number);
   let cursor = hIni * 60 + mIni;
   let fim = hFim * 60 + mFim;
-  if(fim <= cursor) fim += 24 * 60; // permite virar a madrugada (ex: 22:00 até 06:00)
+  const voltaAoMesmoPonto = fim === cursor; // início = fim → cobrir as 24h completas
+  if(fim <= cursor) fim += 24 * 60; // permite virar a madrugada (ex: 22:00 até 06:00) ou cobrir o dia inteiro
   const gerados = [];
   while(cursor <= fim){
+    // Evita duplicar o horário de início quando o ciclo de 24h fecha exatamente nele de volta.
+    if(voltaAoMesmoPonto && cursor === fim && gerados.length){ cursor += passo; continue; }
     const hh = String(Math.floor((cursor % 1440) / 60)).padStart(2, '0');
     const mm = String(cursor % 60).padStart(2, '0');
     gerados.push(hh + ':' + mm);

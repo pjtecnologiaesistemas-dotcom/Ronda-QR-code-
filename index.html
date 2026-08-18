@@ -225,7 +225,7 @@
   .alert-msg{color:var(--text);font-size:14px;text-align:center;margin-bottom:16px;line-height:1.4;}
 
   @media print{
-    header.top,.tabs,.card:not(.print-area){display:none !important;}
+    header.top,.tabs,.card:not(.print-area),.no-print{display:none !important;}
     body{background:#fff;color:#000;}
   }
 </style>
@@ -408,7 +408,13 @@
       <div class="card print-area">
         <h3>Etiquetas para impressão</h3>
         <div class="desc">Imprima e cole cada QR Code no respectivo ponto físico.</div>
-        <button class="btn btn-ghost" onclick="window.print()" style="margin-bottom:14px;">🖨️ Imprimir todas</button>
+        <div class="no-print" style="max-width:320px;">
+          <label>Filtrar por posto</label>
+          <select id="printPostoFilter" onchange="renderPrintGrid()">
+            <option value="">Todos os postos</option>
+          </select>
+        </div>
+        <button class="btn btn-ghost no-print" onclick="window.print()" style="margin-bottom:14px;">🖨️ Imprimir todas</button>
         <div class="qr-print-grid" id="qrPrintGrid"></div>
       </div>
     </div>
@@ -601,6 +607,9 @@ function renderPostoSelects(){
 
   const vpSel = document.getElementById('vigPostoSelect');
   if(vpSel){ const cur = vpSel.value; vpSel.innerHTML = '<option value="">Selecione um posto</option>' + opts; vpSel.value = cur; }
+
+  const pfSel = document.getElementById('printPostoFilter');
+  if(pfSel){ const cur = pfSel.value; pfSel.innerHTML = '<option value="">Todos os postos</option>' + opts; pfSel.value = cur; renderPrintGrid(); }
 }
 
 /* ---------- Postos: login (usuário/senha) + configuração da ronda ---------- */
@@ -1125,7 +1134,12 @@ function renderPrintGrid(){
   const grid = document.getElementById('qrPrintGrid');
   if(!grid) return;
   grid.innerHTML = '';
-  Object.keys(checkpointsCache).forEach(id => {
+  const filtroPostoId = document.getElementById('printPostoFilter') ? document.getElementById('printPostoFilter').value : '';
+  const ids = Object.keys(checkpointsCache).filter(id => {
+    if(!filtroPostoId) return true; // "Todos os postos"
+    return (checkpointsCache[id].postoId || '') === filtroPostoId;
+  });
+  ids.forEach(id => {
     const cp = checkpointsCache[id];
     const tag = document.createElement('div');
     tag.className = 'qr-tag';
@@ -1152,6 +1166,9 @@ function renderPrintGrid(){
   });
   if(Object.keys(checkpointsCache).length === 0){
     grid.innerHTML = '<div class="empty">Cadastre pontos na aba "Pontos de Ronda" primeiro.</div>';
+  } else if(ids.length === 0){
+    const nomePosto = postosCache[filtroPostoId] ? postosCache[filtroPostoId].nome : '';
+    grid.innerHTML = `<div class="empty">Nenhum ponto de ronda cadastrado para${nomePosto ? ' "' + nomePosto + '"' : ' este posto'}.</div>`;
   }
 }
 

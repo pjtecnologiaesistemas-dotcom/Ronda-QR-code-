@@ -4,7 +4,7 @@
 // Firestore nem CDNs externas — essas sempre vão direto pra rede, pra não
 // quebrar sincronização em tempo real.
 
-const CACHE_NAME = 'ronda-qr-shell-v1';
+const CACHE_NAME = 'ronda-qr-shell-v2';
 const APP_SHELL = [
   './index.html',
   './manifest.json',

@@ -168,6 +168,28 @@
 
   .empty{text-align:center;color:var(--sub);padding:30px 10px;font-size:13px;}
 
+  /* balão de PIN */
+  .modal-overlay{
+    position:fixed;inset:0;background:rgba(5,6,8,0.72);display:flex;
+    align-items:center;justify-content:center;z-index:200;padding:20px;
+  }
+  .modal-balloon{
+    position:relative;width:100%;max-width:280px;background:var(--panel);
+    border:1px solid var(--amber-dim);border-radius:14px;padding:22px 20px;
+    box-shadow:0 16px 46px rgba(0,0,0,0.55);animation:balloonIn .16s ease-out;
+  }
+  .modal-balloon::before{
+    content:'';position:absolute;top:-9px;left:50%;transform:translateX(-50%) rotate(45deg);
+    width:16px;height:16px;background:var(--panel);
+    border-left:1px solid var(--amber-dim);border-top:1px solid var(--amber-dim);
+  }
+  @keyframes balloonIn{from{opacity:0;transform:translateY(6px) scale(.96);}to{opacity:1;transform:translateY(0) scale(1);}}
+  .modal-balloon h4{margin:0 0 12px;font-size:15px;text-align:center;}
+  .modal-balloon input{margin-bottom:6px;text-align:center;letter-spacing:3px;}
+  .modal-error{display:none;color:var(--red);font-size:11.5px;font-family:'IBM Plex Mono',monospace;text-align:center;margin-bottom:8px;}
+  .modal-actions{display:flex;gap:8px;}
+  .modal-actions .btn{flex:1;margin-bottom:0;}
+
   @media print{
     header.top,.tabs,.card:not(.print-area){display:none !important;}
     body{background:#fff;color:#000;}
@@ -199,6 +221,19 @@
   </div>
   <div class="role-badge" id="roleBadge" onclick="logoutRole()" style="display:none;"></div>
 </header>
+
+<!-- BALÃO DE PIN DO ADMINISTRADOR -->
+<div class="modal-overlay" id="pinModalOverlay" style="display:none;">
+  <div class="modal-balloon">
+    <h4>PIN do administrador</h4>
+    <div class="modal-error" id="pinError">PIN incorreto. Tente novamente.</div>
+    <input type="password" id="pinInput" inputmode="numeric" placeholder="••••" autocomplete="off" onkeydown="if(event.key==='Enter')confirmarPin();">
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="cancelarPin()">Cancelar</button>
+      <button class="btn btn-amber" onclick="confirmarPin()">Entrar</button>
+    </div>
+  </div>
+</div>
 <div class="status-banner" id="statusBanner"></div>
 
 <main>
@@ -348,6 +383,10 @@
     </div>
 
     <div id="vigScanCard" style="display:none;">
+      <div class="cp-item">
+        <div class="info"><b id="vigAtualNome"></b><small id="vigAtualPosto"></small></div>
+        <div class="cp-actions"><button class="icon-btn" onclick="trocarVigilante()">🔁 Trocar vigilante</button></div>
+      </div>
       <div class="card">
         <h3>Escanear ponto</h3>
         <div class="desc">Aponte a câmera para o QR Code fixado no ponto de ronda.</div>
@@ -563,16 +602,28 @@ function isHoje(ts){
 
 /* ---------- Role gate ---------- */
 function askAdminPin(){
-  const pin = prompt('PIN do administrador:');
+  document.getElementById('pinError').style.display = 'none';
+  document.getElementById('pinInput').value = '';
+  document.getElementById('pinModalOverlay').style.display = 'flex';
+  setTimeout(() => document.getElementById('pinInput').focus(), 60);
+}
+function cancelarPin(){
+  document.getElementById('pinModalOverlay').style.display = 'none';
+}
+function confirmarPin(){
+  const pin = document.getElementById('pinInput').value;
   if(pin === ADMIN_PIN){
+    document.getElementById('pinModalOverlay').style.display = 'none';
     document.getElementById('gate').style.display = 'none';
     document.getElementById('adminArea').style.display = 'block';
     const b = document.getElementById('roleBadge');
     b.style.display = 'inline-block';
     b.textContent = 'ADMIN · sair';
     initAdmin();
-  } else if(pin !== null){
-    alert('PIN incorreto.');
+  } else {
+    document.getElementById('pinError').style.display = 'block';
+    document.getElementById('pinInput').value = '';
+    document.getElementById('pinInput').focus();
   }
 }
 function enterVigilante(){
@@ -583,21 +634,25 @@ function enterVigilante(){
   b.textContent = 'VIGILANTE · sair';
   loadCheckpointsForScanning();
 
+  // Pré-seleciona o último posto/vigilante usados neste aparelho apenas como
+  // ponto de partida — a lista de vigilantes continua disponível e a ronda
+  // só começa quando "Iniciar ronda" for confirmado, permitindo trocar o
+  // nome sempre que outro vigilante for usar o mesmo aparelho.
   const savedPostoId = localStorage.getItem('ronda_posto_id');
   const savedVigId = localStorage.getItem('ronda_vig_id');
-  if(savedPostoId && savedVigId){
-    // pequena espera para os selects de posto/vigilante serem populados pelo Firestore
-    const tentarRestaurar = (tentativas) => {
-      if(postosCache[savedPostoId] && vigilantesCache[savedVigId]){
+  if(savedPostoId){
+    const tentarPreencher = (tentativas) => {
+      if(postosCache[savedPostoId]){
         document.getElementById('vigPostoLogin').value = savedPostoId;
         atualizarVigilantesDoPosto();
-        document.getElementById('vigNomeSelect').value = savedVigId;
-        confirmarVigilante();
+        if(savedVigId && vigilantesCache[savedVigId]){
+          document.getElementById('vigNomeSelect').value = savedVigId;
+        }
       } else if(tentativas > 0){
-        setTimeout(() => tentarRestaurar(tentativas - 1), 400);
+        setTimeout(() => tentarPreencher(tentativas - 1), 400);
       }
     };
-    tentarRestaurar(5);
+    tentarPreencher(5);
   }
 }
 function logoutRole(){
@@ -811,9 +866,17 @@ function confirmarVigilante(){
   currentPostoNome = postosCache[postoId] ? postosCache[postoId].nome : '';
   localStorage.setItem('ronda_vig_id', vigId);
   localStorage.setItem('ronda_posto_id', postoId);
+  document.getElementById('vigAtualNome').textContent = currentVigilante;
+  document.getElementById('vigAtualPosto').textContent = currentPostoNome;
   document.getElementById('vigLoginCard').style.display = 'none';
   document.getElementById('vigScanCard').style.display = 'block';
   carregarHistoricoVigilante();
+}
+
+function trocarVigilante(){
+  pararScanner();
+  document.getElementById('vigScanCard').style.display = 'none';
+  document.getElementById('vigLoginCard').style.display = 'block';
 }
 
 function iniciarScanner(){

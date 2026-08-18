@@ -918,12 +918,21 @@ function iniciarScanner(){
 }
 
 function pararScanner(){
+  const finalizarUI = () => {
+    document.getElementById('reader').innerHTML = '';
+    document.getElementById('reader').style.display = 'none';
+    document.getElementById('scanIdle').style.display = 'block';
+  };
   if(html5QrCode){
-    html5QrCode.stop().then(() => html5QrCode.clear()).catch(()=>{});
+    // Espera o desligamento da câmera terminar de verdade antes de mexer no
+    // DOM/reabilitar o botão — se a tela for limpa antes do stop() concluir,
+    // a câmera fica "presa" internamente e o próximo scan não consegue abrir.
+    const instancia = html5QrCode;
+    html5QrCode = null;
+    instancia.stop().then(() => instancia.clear()).then(finalizarUI).catch(finalizarUI);
+  } else {
+    finalizarUI();
   }
-  document.getElementById('reader').innerHTML = '';
-  document.getElementById('reader').style.display = 'none';
-  document.getElementById('scanIdle').style.display = 'block';
 }
 
 function onScanSuccess(decodedText){

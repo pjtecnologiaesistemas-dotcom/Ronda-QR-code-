@@ -81,7 +81,7 @@
   .gate h2{font-size:26px;margin:0;font-weight:700;}
   .gate p{color:var(--sub);margin:0;max-width:340px;font-size:14px;}
   .admin-link{
-    position:absolute;top:0;right:0;font-size:11.5px;color:var(--sub);
+    position:absolute;top:0;right:0;font-size:11.5px;color:var(--amber-dim);
     font-family:'IBM Plex Mono',monospace;text-decoration:underline;cursor:pointer;
   }
   .admin-link:hover{color:var(--amber);}
@@ -375,33 +375,7 @@
 <body>
 
 <header class="top">
-  <div class="brand">
-    <div class="brand-mark">
-      <svg viewBox="0 0 100 110" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="hdrHexG" x1="0" y1="0" x2="100" y2="110" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stop-color="#0d3878"/><stop offset="100%" stop-color="#051225"/>
-          </linearGradient>
-          <linearGradient id="hdrHexS" x1="0" y1="0" x2="100" y2="110" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stop-color="#00eaff"/><stop offset="50%" stop-color="#0088cc"/><stop offset="100%" stop-color="#00c8f8"/>
-          </linearGradient>
-        </defs>
-        <polygon points="50,4 96,28 96,82 50,106 4,82 4,28" fill="url(#hdrHexG)" stroke="url(#hdrHexS)" stroke-width="2.5"/>
-        <polygon points="50,12 88,33 88,78 50,98 12,78 12,33" fill="none" stroke="rgba(0,200,248,0.18)" stroke-width="1"/>
-        <circle cx="50" cy="4" r="2.5" fill="#00eaff" opacity=".8"/>
-        <circle cx="96" cy="28" r="2.5" fill="#00eaff" opacity=".8"/>
-        <circle cx="96" cy="82" r="2.5" fill="#00eaff" opacity=".8"/>
-        <circle cx="50" cy="106" r="2.5" fill="#00eaff" opacity=".8"/>
-        <circle cx="4" cy="82" r="2.5" fill="#00eaff" opacity=".8"/>
-        <circle cx="4" cy="28" r="2.5" fill="#00eaff" opacity=".8"/>
-      </svg>
-      <div class="mono">P<span>J</span></div>
-    </div>
-    <div>
-      <h1>Ronda QR</h1>
-      <span>GPS + QR Code · PJ Tecnologia e Sistemas</span>
-    </div>
-  </div>
+  <div class="brand"></div>
   <div class="role-badge" id="roleBadge" onclick="logoutRole()" style="display:none;"></div>
 </header>
 
@@ -728,6 +702,10 @@ const ADMIN_PIN = "1234"; // troque este PIN
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+// Mantém os dados em cache no aparelho e permite gravar rondas mesmo com
+// sinal fraco/instável — a gravação fica na fila local e sincroniza sozinha
+// assim que a conexão voltar, sem travar o escaneamento nem perder o registro.
+try{ db.enablePersistence({synchronizeTabs:true}).catch(() => {}); }catch(e){}
 const checkpointsRef = db.collection('ronda_checkpoints');
 const scansRef = db.collection('ronda_scans');
 const postosRef = db.collection('ronda_postos');
@@ -1693,7 +1671,7 @@ function processarPontoEscaneado(cpId, cp){
     document.querySelector('.radar').classList.remove('pinging');
     const dist = haversine(pos.coords.latitude, pos.coords.longitude, cp.lat, cp.lng);
     const status = dist <= cp.raio ? 'valido' : 'fora_area';
-    scansRef.add({
+    const registro = {
       checkpointId: cpId,
       checkpointNome: cp.nome,
       vigilante: currentVigilante,
@@ -1705,12 +1683,21 @@ function processarPontoEscaneado(cpId, cp){
       status: status,
       clientTime: Date.now(),
       timestamp: firebase.firestore.FieldValue.serverTimestamp()
-    }).then(() => {
-      mostrarUltimoScan(cp.nome, dist, status);
-      // Não é preciso recarregar manualmente: o listener de
-      // carregarHistoricoVigilante() já atualiza a lista em tempo real.
-      scannerBusy = false;
-      document.getElementById('scanIdle').style.display = 'block';
+    };
+
+    // Feedback e liberação do scanner são imediatos — não esperam o Firestore
+    // confirmar com o servidor. Isso evita a tela travar quando o sinal está
+    // fraco: a gravação fica na fila local (offline persistence) e sincroniza
+    // sozinha depois; o histórico do vigilante já mostra o registro na hora
+    // porque o listener reflete escritas locais pendentes.
+    mostrarUltimoScan(cp.nome, dist, status);
+    scannerBusy = false;
+    document.getElementById('scanIdle').style.display = 'block';
+
+    scansRef.add(registro).catch(err => {
+      console.error('Erro ao gravar ronda:', err);
+      alert('⚠ O ponto foi escaneado, mas houve um erro ao salvar no sistema: ' + err.message +
+        '\n\nSe isso persistir, avise o administrador — pode ser um problema de permissão no banco de dados.');
     });
   }, err => {
     document.querySelector('.radar').classList.remove('pinging');
